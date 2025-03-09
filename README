@@ -25,6 +25,7 @@ c - select foreground color
 Shift+C - select background color
 p - put color in 2x4 cell
 Shift+P - pick color from 2x4 cell
+Shift+S - save file
 
 In palette selection screen:
 Arrows - move around
@@ -46,6 +47,10 @@ Shift+S - green -10
 Shift+D - blue -10
 Enter - select
 Escape - cancel
+
+At any text prompt:
+Escape - cancel operation
+Enter - submit answer
 
 Known Bugs/Issues:
 The status/prompt lines don't clear.

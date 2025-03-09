@@ -4,6 +4,7 @@ from array import array
 import itertools
 import sys
 from enum import Enum, auto
+import pathlib
 
 import blessed
 
@@ -36,6 +37,7 @@ class KeyActions(Enum):
     SELECT_BG_COLOR = auto()
     PUT_COLOR = auto()
     PICK_COLOR = auto()
+    SAVE_FILE = auto()
 
 class ColorMode(Enum):
     C16 = auto()
@@ -194,6 +196,28 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 tile += 7
             print(TILES[tile], end='')
 
+def make_cell(data : array, dx : int, dy : int, dw : int):
+    cell : int = 0
+    # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
+    if bool(data[(dy * dw) + dx]):
+        cell += 1
+    if bool(data[((dy + 1) * dw) + dx]):
+        cell += 2
+    if bool(data[((dy + 2) * dw) + dx]):
+        cell += 4
+    if bool(data[((dy + 3) * dw) + dx]):
+        cell += 8
+    if bool(data[(dy * dw) + (dx + 1)]):
+        cell += 16
+    if bool(data[((dy + 1) * dw) + (dx + 1)]):
+        cell += 32
+    if bool(data[((dy + 2) * dw) + (dx + 1)]):
+        cell += 64
+    if bool(data[((dy + 3) * dw) + (dx + 1)]):
+        cell += 128
+
+    return cell
+ 
 def display_matrix(t : blessed.Terminal,
                    color_mode : ColorMode,
                    x : int, y : int,
@@ -208,10 +232,7 @@ def display_matrix(t : blessed.Terminal,
                    colordata_bg_b : array):
     # unlike the above, this one should never be given arguments to read out of bounds
 
-    # convert between cell coordinates to data coordinates
-    dx = cx * 2
-    dy = cx * 4
-    # get width in cells
+    # get width in cells for colordata lookup
     cw = dw // 2
 
     if color_mode == ColorMode.DIRECT:
@@ -231,9 +252,7 @@ def display_matrix(t : blessed.Terminal,
 
     for iy in range(h):
         print(t.move_xy(x, y + iy), end='')
-        ry = iy * 4
         for ix in range(w):
-            rx = ix * 2
             if color_mode == ColorMode.DIRECT:
                 color_fg_r = colordata_fg_r[((cy + iy) * cw) + (cx + ix)]
                 color_fg_g = colordata_fg_g[((cy + iy) * cw) + (cx + ix)]
@@ -266,24 +285,7 @@ def display_matrix(t : blessed.Terminal,
                     print(t.on_color(color_bg_r), end='')
                     lastcolor_bg_r = color_bg_r
 
-            # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
-            cell = 0
-            if bool(data[((dy + ry) * dw) + (dx + rx)]):
-                cell += 1
-            if bool(data[((dy + ry + 1) * dw) + (dx + rx)]):
-                cell += 2
-            if bool(data[((dy + ry + 2) * dw) + (dx + rx)]):
-                cell += 4
-            if bool(data[((dy + ry + 3) * dw) + (dx + rx)]):
-                cell += 8
-            if bool(data[((dy + ry) * dw) + (dx + rx + 1)]):
-                cell += 16
-            if bool(data[((dy + ry + 1) * dw) + (dx + rx + 1)]):
-                cell += 32
-            if bool(data[((dy + ry + 2) * dw) + (dx + rx + 1)]):
-                cell += 64
-            if bool(data[((dy + ry + 3) * dw) + (dx + rx + 1)]):
-                cell += 128
+            cell = make_cell(data, (cx + ix) * 2, (cy + iy) * 4, dw)
             print(CHARS4[cell], end='')
 
 def update_matrix(t : blessed.Terminal,
@@ -313,25 +315,8 @@ def update_matrix(t : blessed.Terminal,
         print(t.color(colordata_fg_r[cy * cw + cx]), end='')
         print(t.on_color(colordata_bg_r[cy * cw + cx]), end='')
 
-    # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
-    cell = 0
-    if bool(data[(dy * dw) + dx]):
-        cell += 1
-    if bool(data[((dy + 1) * dw) + dx]):
-        cell += 2
-    if bool(data[((dy + 2) * dw) + dx]):
-        cell += 4
-    if bool(data[((dy + 3) * dw) + dx]):
-        cell += 8
-    if bool(data[(dy * dw) + (dx + 1)]):
-        cell += 16
-    if bool(data[((dy + 1) * dw) + (dx + 1)]):
-        cell += 32
-    if bool(data[((dy + 2) * dw) + (dx + 1)]):
-        cell += 64
-    if bool(data[((dy + 3) * dw) + (dx + 1)]):
-        cell += 128
     print(t.move_xy(x + cx, y + cy), end='')
+    cell = make_cell(data, dx, dy, dw)
     print(CHARS4[cell], end='')
 
 def inkey_numeric(t : blessed.Terminal):
@@ -542,6 +527,76 @@ def new_color_data(color_mode : ColorMode, width : int, height : int):
 
     return colordata_fg_r, colordata_fg_g, colordata_fg_b, colordata_bg_r, colordata_bg_g, colordata_bg_b
 
+def save_file(t : blessed.Terminal,
+              path : pathlib.Path,
+              data : array, dw : int,
+              color_mode : ColorMode,
+              colordata_fg_r : array,
+              colordata_fg_g : array,
+              colordata_fg_b : array,
+              colordata_bg_r : array,
+              colordata_bg_g : array,
+              colordata_bg_b : array):
+    # very similar to display_matrix
+    with path.open('w') as out:
+        # get width in cells for colordata lookup
+        cw = dw // 2
+
+        for iy in range(len(data) // dw // 4):
+            # print on every line, because it's normaled at the end of each line
+            if color_mode == ColorMode.DIRECT:
+                lastcolor_fg_r = colordata_fg_r[0]
+                lastcolor_fg_g = colordata_fg_g[0]
+                lastcolor_fg_b = colordata_fg_b[0]
+                lastcolor_bg_r = colordata_bg_r[0]
+                lastcolor_bg_g = colordata_bg_g[0]
+                lastcolor_bg_b = colordata_bg_b[0]
+                out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
+                out.write(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b))
+            else:
+                lastcolor_fg_r = colordata_fg_r[0]
+                lastcolor_bg_r = colordata_bg_r[0]
+                out.write(t.on_color(lastcolor_bg_r))
+                out.write(t.color(lastcolor_fg_r))
+
+            for ix in range(dw // 2):
+                if color_mode == ColorMode.DIRECT:
+                    color_fg_r = colordata_fg_r[iy * cw + ix]
+                    color_fg_g = colordata_fg_g[iy * cw + ix]
+                    color_fg_b = colordata_fg_b[iy * cw + ix]
+                    color_bg_r = colordata_bg_r[iy * cw + ix]
+                    color_bg_g = colordata_bg_g[iy * cw + ix]
+                    color_bg_b = colordata_bg_b[iy * cw + ix]
+                    if color_fg_r != lastcolor_fg_r or \
+                       color_fg_g != lastcolor_fg_g or \
+                       color_fg_b != lastcolor_fg_b:
+                        out.write(t.color_rgb(color_fg_r, color_fg_g, color_fg_b))
+                        lastcolor_fg_r = color_fg_r
+                        lastcolor_fg_g = color_fg_g
+                        lastcolor_fg_b = color_fg_b
+                    if color_bg_r != lastcolor_bg_r or \
+                       color_bg_g != lastcolor_bg_g or \
+                       color_bg_b != lastcolor_bg_b:
+                        out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
+                        lastcolor_bg_r = color_bg_r
+                        lastcolor_bg_g = color_bg_g
+                        lastcolor_bg_b = color_bg_b
+                else:
+                    # paletted modes use the R channel for color value
+                    color_fg_r = colordata_fg_r[iy * cw + ix]
+                    color_bg_r = colordata_bg_r[iy * cw + ix]
+                    if color_fg_r != lastcolor_fg_r:
+                        out.write(t.color(color_fg_r))
+                        lastcolor_fg_r = color_fg_r
+                    if color_bg_r != lastcolor_bg_r:
+                        out.write(t.on_color(color_bg_r))
+                        lastcolor_bg_r = color_bg_r
+
+                cell = make_cell(data, ix * 2, iy * 4, dw)
+                out.write(CHARS4[cell])
+            out.write(t.normal)
+            out.write('\n')
+
 
 def main():
     width : int = 20
@@ -585,7 +640,8 @@ def main():
         ord('c'): KeyActions.SELECT_FG_COLOR,
         ord('C'): KeyActions.SELECT_BG_COLOR,
         ord('p'): KeyActions.PUT_COLOR,
-        ord('P'): KeyActions.PICK_COLOR
+        ord('P'): KeyActions.PICK_COLOR,
+        ord('S'): KeyActions.SAVE_FILE
     }
 
     COLORS = {
@@ -836,6 +892,22 @@ def main():
                         fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
                         bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
                     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                case KeyActions.SAVE_FILE:
+                    filename = prompt(t, "Filename?")
+                    if filename is not None:
+                        path = pathlib.Path(filename)
+                        if path.exists():
+                            ans = prompt_yn(t, "File exists, overwrite?")
+                            if not ans:
+                                print_status(t, "Save canceled.")
+                                continue
+
+                        save_file(t, path, data, width, color_mode,
+                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                        print_status(t, "File saved.")
+                    else:
+                        print_status(t, "Save canceled.")
  
 
 if __name__ == '__main__':
