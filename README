@@ -1,0 +1,52 @@
+Term 42 Editor
+
+2x4 Octant character editor for the terminal, in color
+
+Dependencies:
+python 3
+blessed
+
+Keys:
+
+Shift+Q - quit
+Left Arrow, a - move left
+Right Arrow, d - move right
+Up Arrow, w - move up
+Down Arrow, s - move down
+Space - toggle pixel
+r - resize canvas
+g - toggle zoomed view grid
+z - toggle zoomed view color
+Shift+X - clear canvas
+Home, h - home position (0, 0)
+e - find nearest edge when off canvas
+Shift+M - change color mode (16, 256, DIRECT), clears canvas
+c - select foreground color
+Shift+C - select background color
+p - put color in 2x4 cell
+Shift+P - pick color from 2x4 cell
+
+In palette selection screen:
+Arrows - move around
+Enter - select
+Escape - cancel
+
+In DIRECT mode selection screen:
+q - red +1
+w - green +1
+e - blue +1
+a - red -1
+s - green -1
+d - blue -1
+Shift+Q - red +10
+Shift+W - green +10
+Shift+E - blue +10
+Shift+A - red -10
+Shift+S - green -10
+Shift+D - blue -10
+Enter - select
+Escape - cancel
+
+Known Bugs/Issues:
+The status/prompt lines don't clear.
+No backspace in prompts.
