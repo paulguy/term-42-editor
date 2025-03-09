@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "term-42-editor"
+version = "1.0"
+authors = [
+  { name="paulguy", email="author@example.com" },
+]
+description = "2x4 Octant character editor for the terminal, in color"
+readme = "README"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "blessed",
+]
+
+[project.urls]
+Homepage = "https://github.com/paulguy/term-42-editor"
+Issues = "https://github.com/paulguy/term-42-editor/issues"
+
+[project.scripts]
+term-42-editor = "editor:main"
