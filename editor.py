@@ -38,6 +38,7 @@ class KeyActions(Enum):
     PUT_COLOR = auto()
     PICK_COLOR = auto()
     SAVE_FILE = auto()
+    REDRAW = auto()
 
 class ColorMode(Enum):
     C16 = auto()
@@ -641,7 +642,8 @@ def main():
         ord('C'): KeyActions.SELECT_BG_COLOR,
         ord('p'): KeyActions.PUT_COLOR,
         ord('P'): KeyActions.PICK_COLOR,
-        ord('S'): KeyActions.SAVE_FILE
+        ord('S'): KeyActions.SAVE_FILE,
+        ord('R'): KeyActions.REDRAW
     }
 
     COLORS = {
@@ -908,6 +910,9 @@ def main():
                         print_status(t, "File saved.")
                     else:
                         print_status(t, "Save canceled.")
+                case KeyActions.REDRAW:
+                    clear_screen(t)
+                    refresh_matrix = True
  
 
 if __name__ == '__main__':
