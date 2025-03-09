@@ -859,10 +859,10 @@ def main():
                 case KeyActions.SELECT_BG_COLOR:
                     if color_mode == ColorMode.DIRECT:
                         bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b)
-                        print_status(t, f"Background color RGB {fg_r}, {fg_g}, {fg_b} selected.")
+                        print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
                     else:
                         bg_r = select_color(t, bg_r, color_mode)
-                        print_status(t, f"Background color index {fg_r} selected.")
+                        print_status(t, f"Background color index {bg_r} selected.")
                     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
                     # screen was cleared so needs to be drawn
                     refresh_matrix = True
