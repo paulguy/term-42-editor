@@ -8,6 +8,7 @@ import pathlib
 
 import blessed
 
+DEFAULT_FILL = False
 ZOOMED_X = 4
 ZOOMED_PAD = 4
 PREVIEW_SPACING = 4
@@ -662,9 +663,11 @@ def main():
     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
 
     data = array('i', itertools.repeat(0, width * height))
-    # fill with some pattern to show it's working
-    for i in range(0, width * height, 3):
-        data[i] = 1
+    if DEFAULT_FILL:
+        # fill with some pattern to show it's working
+        for i in range(0, width * height, 3):
+            data[i] = 1
+
     colordata_fg_r, colordata_fg_g, colordata_fg_b, \
         colordata_bg_r, colordata_bg_g, colordata_bg_b = \
         new_color_data(color_mode, width, height)
