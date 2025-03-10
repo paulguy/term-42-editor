@@ -98,6 +98,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
             elif dx + ix == dw:
                 # if to the right print normals
                 print(t.normal, end='')
+                lastcolor = ""
             elif dx + ix > dw:
                 # only print once
                 pass
