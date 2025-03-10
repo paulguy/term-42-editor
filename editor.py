@@ -744,21 +744,21 @@ def main():
                         new_color_data(color_mode, newwidth, newheight)
                     smallestwidth = min(width, newwidth)
                     smallestheight = min(height, newheight)
-                    for y in range(smallestheight):
-                        newdata[newwidth * y:newwidth * y + smallestwidth] = data[width * y:width * y + smallestwidth]
-                    for y in range(smallestheight // 4):
-                        newcolordata_fg_r[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_fg_r[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
-                        newcolordata_fg_g[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_fg_g[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
-                        newcolordata_fg_b[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_fg_b[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
-                        newcolordata_bg_r[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_bg_r[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
-                        newcolordata_bg_g[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_bg_g[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
-                        newcolordata_bg_b[(newwidth // 2) * y:(newwidth // 2) * y + (smallestwidth // 2)] = \
-                            colordata_bg_b[(width // 2) * y:(width // 2) * y + (smallestwidth // 2)]
+                    for i in range(smallestheight):
+                        newdata[newwidth * i:newwidth * i + smallestwidth] = data[width * i:width * i + smallestwidth]
+                    for i in range(smallestheight // 4):
+                        newcolordata_fg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_fg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                        newcolordata_fg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_fg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                        newcolordata_fg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_fg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                        newcolordata_bg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_bg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                        newcolordata_bg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_bg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                        newcolordata_bg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                            colordata_bg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
                     data = newdata
                     colordata_fg_r = newcolordata_fg_r
                     colordata_fg_g = newcolordata_fg_g
@@ -768,10 +768,10 @@ def main():
                     colordata_bg_b = newcolordata_bg_b
                     width = newwidth
                     height = newheight
-                    clear_screen(t)
-                    refresh_matrix = True
                     x = min(x, width)
                     y = min(y, height)
+                    clear_screen(t)
+                    refresh_matrix = True
                     print_status(t, f"Image resized to {width}, {height}.")
                 case KeyActions.GRID:
                     grid = not grid
