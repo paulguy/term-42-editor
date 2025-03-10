@@ -8,7 +8,13 @@ import pathlib
 
 import blessed
 
-DEFAULT_FILL = False
+# TODO: Add line and fill.
+# TODO: Add selection/copy/paste.
+# TODO: Add undo.
+# TODO: Add save without color.
+# TODO: Add loading files.
+
+DEFAULT_FILL = True
 ZOOMED_X = 4
 ZOOMED_PAD = 4
 PREVIEW_SPACING = 4
@@ -52,7 +58,16 @@ COLOR_PREVIEW = "𜶉𜶉"
 CURSOR = "🯧🯦"
 BLOCK = "██"
 
-TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥")
+TILE_CURSOR = 7
+TILE_INVERT = 14
+TILE_TOPLEFT = 1
+TILE_LEFT = 2
+TILE_BOTTOMLEFT = 3
+TILE_TOPRIGHT = 4
+TILE_RIGHT = 5
+TILE_BOTTOMRIGHT = 6
+TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥",
+         "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨")
 def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
@@ -76,6 +91,11 @@ def display_zoomed_matrix(t : blessed.Terminal,
     lastcolor_r : int = None
     lastcolor_g : int = None
     lastcolor_b : int = None
+    lastcolor_fg_r = colordata_fg_r[cw * cy + cx]
+    lastcolor_fg_g = colordata_fg_g[cw * cy + cx]
+    lastcolor_fg_b = colordata_fg_b[cw * cy + cx]
+    # only need R to determine transparency
+    lastcolor_bg_r = colordata_bg_r[cw * cy + cx]
     lastcolor : str = ""
 
     for iy in range(pad * 2 + 1):
@@ -114,27 +134,44 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 pass
             else:
                 # set color
+                # This is waaaaaay complicated and probably some remaining bugs
                 if use_color:
                     ciy : int = (dy + iy) // 4
                     cix : int = (dx + ix) // 2
                     if color_mode == ColorMode.DIRECT:
                         if data[dw * (dy + iy) + (dx + ix)]:
+                            # pixel on (foreground)
                             color_r = colordata_fg_r[cw * ciy + cix]
                             color_g = colordata_fg_g[cw * ciy + cix]
                             color_b = colordata_fg_b[cw * ciy + cix]
+                            color_bg_r = colordata_bg_r[cw * ciy + cix]
                             if len(lastcolor) == 0 or \
                                color_r != lastcolor_r or \
                                color_g != lastcolor_g or \
-                               color_b != lastcolor_b:
-                                print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                  max(0, 255 - color_g - 64),
-                                                  max(0, 255 - color_b - 64)), end='')
+                               color_b != lastcolor_b or \
+                               color_bg_r != lastcolor_bg_r:
+                                if color_bg_r < 0:
+                                    # backgrond is still transparent
+                                    print(t.normal, end='')
+                                    # set foreground color but select inverted tiles
+                                    print(t.color_rgb(color_r, color_g, color_b), end='')
+                                else:
+                                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                                    print(t.color_rgb(max(0, 255 - color_r - 64),
+                                                      max(0, 255 - color_g - 64),
+                                                      max(0, 255 - color_b - 64)), end='')
+                                lastcolor_bg_r = color_bg_r
+                                lastcolor_fg_r = color_r
+                                lastcolor_fg_g = color_g
+                                lastcolor_fg_b = color_b
                                 lastcolor_r = color_r
                                 lastcolor_g = color_g
                                 lastcolor_b = color_b
                                 lastcolor = "#"  # Tag with some non-empty string
+                            if lastcolor_bg_r < 0:
+                                tile += TILE_INVERT
                         else:
+                            # pixel off (background)
                             color_r = colordata_bg_r[cw * ciy + cix]
                             color_g = colordata_bg_g[cw * ciy + cix]
                             color_b = colordata_bg_b[cw * ciy + cix]
@@ -142,35 +179,61 @@ def display_zoomed_matrix(t : blessed.Terminal,
                                color_r != lastcolor_r or \
                                color_g != lastcolor_g or \
                                color_b != lastcolor_b:
-                                print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                  max(0, 255 - color_g - 64),
-                                                  max(0, 255 - color_b - 64)), end='')
+                                if color_r < 0:
+                                    # transition to transparent background
+                                    print(t.normal, end='')
+                                    # set foreground
+                                    print(t.color_rgb(colordata_fg_r[cw * ciy + cix],
+                                                      colordata_fg_g[cw * ciy + cix],
+                                                      colordata_fg_b[cw * ciy + cix]), end='')
+                                else:
+                                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                                    print(t.color_rgb(max(0, 255 - color_r - 64),
+                                                      max(0, 255 - color_g - 64),
+                                                      max(0, 255 - color_b - 64)), end='')
+                                lastcolor_bg_r = color_r
                                 lastcolor_r = color_r
                                 lastcolor_g = color_g
                                 lastcolor_b = color_b
                                 lastcolor = "#"  # Tag with some non-empty string
                     else:
                         if data[dw * (dy + iy) + (dx + ix)]:
+                            # pixel on (foreground)
                             color_r = colordata_fg_r[cw * ciy + cix]
+                            color_bg_r = colordata_bg_r[cw * ciy + cix]
                             if len(lastcolor) == 0 or \
-                               color_r != lastcolor_r:
-                                print(t.on_color(color_r), end='')
-                                if color_r == BLACK:
-                                    print(t.color(WHITE), end='')
+                               color_r != lastcolor_r or \
+                               color_bg_r != lastcolor_bg_r:
+                                if color_bg_r < 0:
+                                    print(t.normal, end='')
+                                    print(t.color(color_r), end='')
                                 else:
-                                    print(t.color(BLACK), end='')
+                                    print(t.on_color(color_r), end='')
+                                    if color_r == BLACK:
+                                        print(t.color(WHITE), end='')
+                                    else:
+                                        print(t.color(BLACK), end='')
+                                lastcolor_bg_r = color_bg_r
+                                lastcolor_fg_r = color_r
                                 lastcolor_r = color_r
                                 lastcolor = "#"  # Tag with some non-empty string
+                            if lastcolor_bg_r < 0:
+                                tile += TILE_INVERT
                         else:
+                            # pixel off (background)
                             color_r = colordata_bg_r[cw * ciy + cix]
                             if len(lastcolor) == 0 or \
                                color_r != lastcolor_r:
-                                print(t.on_color(color_r), end='')
-                                if color_r == BLACK:
-                                    print(t.color(WHITE), end='')
+                                if color_r < 0:
+                                    print(t.normal, end='')
+                                    print(t.color(colordata_fg_r[cw * ciy + cix]), end='')
                                 else:
-                                    print(t.color(BLACK), end='')
+                                    print(t.on_color(color_r), end='')
+                                    if color_r == BLACK:
+                                        print(t.color(WHITE), end='')
+                                    else:
+                                        print(t.color(BLACK), end='')
+                                lastcolor_bg_r = color_r
                                 lastcolor_r = color_r
                                 lastcolor = "#"  # Tag with some non-empty string
                 else:
@@ -182,21 +245,21 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 if grid:
                     if (dx + ix) % 2 == 0:
                         if (dy + iy) % 4 == 0:
-                            tile = 1
+                            tile += TILE_TOPLEFT
                         elif (dy + iy) % 4 == 3:
-                            tile = 3
+                            tile += TILE_BOTTOMLEFT
                         else:
-                            tile = 2
+                            tile += TILE_LEFT
                     else:
                         if (dy + iy) % 4 == 0:
-                            tile = 4
+                            tile += TILE_TOPRIGHT
                         elif (dy + iy) % 4 == 3:
-                            tile = 6
+                            tile += TILE_BOTTOMRIGHT
                         else:
-                            tile = 5
+                            tile += TILE_RIGHT
 
             if ix == pad and iy == pad:
-                tile += 7
+                tile += TILE_CURSOR
             print(TILES[tile], end='')
 
 def make_cell(data : array, dx : int, dy : int, dw : int):
@@ -245,12 +308,18 @@ def display_matrix(t : blessed.Terminal,
         lastcolor_bg_r = colordata_bg_r[cy * cw + cx]
         lastcolor_bg_g = colordata_bg_g[cy * cw + cx]
         lastcolor_bg_b = colordata_bg_b[cy * cw + cx]
-        print(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b), end='')
+        if lastcolor_bg_r < 0:
+            print(t.normal, end='')
+        else:
+            print(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b), end='')
         print(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b), end='')
     else:
         lastcolor_fg_r = colordata_fg_r[cy * cw + cx]
         lastcolor_bg_r = colordata_bg_r[cy * cw + cx]
-        print(t.on_color(lastcolor_bg_r), end='')
+        if lastcolor_bg_r < 0:
+            print(t.normal, end='')
+        else:
+            print(t.on_color(lastcolor_bg_r), end='')
         print(t.color(lastcolor_fg_r), end='')
 
     for iy in range(h):
@@ -273,7 +342,10 @@ def display_matrix(t : blessed.Terminal,
                 if color_bg_r != lastcolor_bg_r or \
                    color_bg_g != lastcolor_bg_g or \
                    color_bg_b != lastcolor_bg_b:
-                    print(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b), end='')
+                    if color_bg_r < 0:
+                        print(t.normal, end='')
+                    else:
+                        print(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b), end='')
                     lastcolor_bg_r = color_bg_r
                     lastcolor_bg_g = color_bg_g
                     lastcolor_bg_b = color_bg_b
@@ -285,7 +357,10 @@ def display_matrix(t : blessed.Terminal,
                     print(t.color(color_fg_r), end='')
                     lastcolor_fg_r = color_fg_r
                 if color_bg_r != lastcolor_bg_r:
-                    print(t.on_color(color_bg_r), end='')
+                    if color_bg_r < 0:
+                        print(t.normal, end='')
+                    else:
+                        print(t.on_color(color_bg_r), end='')
                     lastcolor_bg_r = color_bg_r
 
             cell = make_cell(data, (cx + ix) * 2, (cy + iy) * 4, dw)
@@ -311,12 +386,23 @@ def update_matrix(t : blessed.Terminal,
     cw = dw // 2
 
     if color_mode == ColorMode.DIRECT:
-        print(t.color_rgb(colordata_fg_r[cy * cw + cx], colordata_fg_g[cy * cw + cx], colordata_fg_b[cy * cw + cx]), end='')
-        print(t.on_color_rgb(colordata_bg_r[cy * cw + cx], colordata_bg_g[cy * cw + cx], colordata_bg_b[cy * cw + cx]), end='')
+        bg_r = colordata_bg_r[cy * cw + cx]
+        if bg_r < 0:
+            print(t.normal, end='')
+        else:
+            print(t.on_color_rgb(bg_r,
+                                 colordata_bg_g[cy * cw + cx],
+                                 colordata_bg_b[cy * cw + cx]), end='')
+        print(t.color_rgb(colordata_fg_r[cy * cw + cx],
+                          colordata_fg_g[cy * cw + cx],
+                          colordata_fg_b[cy * cw + cx]), end='')
     else:
         # paletted modes use the R channel for color value
+        if bg_r < 0:
+            print(t.normal, end='')
+        else:
+            print(t.on_color(colordata_bg_r[cy * cw + cx]), end='')
         print(t.color(colordata_fg_r[cy * cw + cx]), end='')
-        print(t.on_color(colordata_bg_r[cy * cw + cx]), end='')
 
     print(t.move_xy(x + cx, y + cy), end='')
     cell = make_cell(data, dx, dy, dw)
@@ -381,10 +467,15 @@ def clear_screen(t : blessed.Terminal):
     print(t.clear, end='')
 
 def select_color_rgb(t : blessed.Terminal,
-                     r : int, g : int, b : int):
+                     r : int, g : int, b : int,
+                     allow_transparent : bool):
     orig_r = r
     orig_g = g
     orig_b = b
+    if r < 0:
+        r = 0
+        g = 0
+        b = 0
     clear_screen(t)
 
     while True:
@@ -450,11 +541,18 @@ def select_color_rgb(t : blessed.Terminal,
             b += 10
             if b > 255:
                 b = 255
+        elif allow_transparent and key == ord('t'):
+            r = -1
+            g = -1
+            b = -1
+            break
 
     clear_screen(t)
     return r, g, b
 
-def select_color(t : blessed.Terminal, c : int, color_mode : ColorMode):
+def select_color(t : blessed.Terminal,
+                 c : int, color_mode : ColorMode,
+                 allow_transparent : bool):
     x = 0
     y = 0
     width = 4
@@ -462,6 +560,9 @@ def select_color(t : blessed.Terminal, c : int, color_mode : ColorMode):
     if color_mode == ColorMode.C256:
         width = 16
         height = 16
+    if c >= 0:
+        x = c % width
+        y = c // width
 
     clear_screen(t)
 
@@ -499,16 +600,19 @@ def select_color(t : blessed.Terminal, c : int, color_mode : ColorMode):
         elif key == t.KEY_DOWN:
             if y < height - 1:
                 y += 1
+        elif allow_transparent and key == ord('t'):
+            c = -1
+            break
 
     clear_screen(t)
     return c
 
 def get_default_colors(color_mode : ColorMode):
-    # set to white on black
+    # set to white on transparent
     if color_mode == ColorMode.DIRECT:
-        return 255, 255, 255, 0, 0, 0
+        return 255, 255, 255, -1, -1, -1
 
-    return WHITE, 0, 0, 0, 0, 0
+    return WHITE, 0, 0, -1, 0, 0
 
 def get_color_str(t : blessed.Terminal,
                   color_mode : ColorMode,
@@ -554,12 +658,18 @@ def save_file(t : blessed.Terminal,
                 lastcolor_bg_r = colordata_bg_r[0]
                 lastcolor_bg_g = colordata_bg_g[0]
                 lastcolor_bg_b = colordata_bg_b[0]
-                out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
+                if lastcolor_bg_r < 0:
+                    out.write(t.normal)
+                else:
+                    out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
                 out.write(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b))
             else:
                 lastcolor_fg_r = colordata_fg_r[0]
                 lastcolor_bg_r = colordata_bg_r[0]
-                out.write(t.on_color(lastcolor_bg_r))
+                if lastcolor_bg_r < 0:
+                    out.write(t.normal)
+                else:
+                    out.write(t.on_color(lastcolor_bg_r))
                 out.write(t.color(lastcolor_fg_r))
 
             for ix in range(dw // 2):
@@ -580,7 +690,10 @@ def save_file(t : blessed.Terminal,
                     if color_bg_r != lastcolor_bg_r or \
                        color_bg_g != lastcolor_bg_g or \
                        color_bg_b != lastcolor_bg_b:
-                        out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
+                        if lastcolor_bg_r < 0:
+                            out.write(t.normal)
+                        else:
+                            out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
                         lastcolor_bg_r = color_bg_r
                         lastcolor_bg_g = color_bg_g
                         lastcolor_bg_b = color_bg_b
@@ -592,7 +705,10 @@ def save_file(t : blessed.Terminal,
                         out.write(t.color(color_fg_r))
                         lastcolor_fg_r = color_fg_r
                     if color_bg_r != lastcolor_bg_r:
-                        out.write(t.on_color(color_bg_r))
+                        if lastcolor_bg_r < 0:
+                            out.write(t.normal)
+                        else:
+                            out.write(t.on_color(color_bg_r))
                         lastcolor_bg_r = color_bg_r
 
                 cell = make_cell(data, ix * 2, iy * 4, dw)
@@ -854,21 +970,27 @@ def main():
                             print_status(t, "Changed to DIRECT color mode.")
                 case KeyActions.SELECT_FG_COLOR:
                     if color_mode == ColorMode.DIRECT:
-                        fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b)
+                        fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b, False)
                         print_status(t, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
                     else:
-                        fg_r = select_color(t, fg_r, color_mode)
+                        fg_r = select_color(t, fg_r, color_mode, False)
                         print_status(t, f"Foreground color index {fg_r} selected.")
                     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
                     # screen was cleared so needs to be drawn
                     refresh_matrix = True
                 case KeyActions.SELECT_BG_COLOR:
                     if color_mode == ColorMode.DIRECT:
-                        bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b)
-                        print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
+                        bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b, True)
+                        if bg_r < 0:
+                            print_status(t, f"Transparent background selected.")
+                        else:
+                            print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
                     else:
-                        bg_r = select_color(t, bg_r, color_mode)
-                        print_status(t, f"Background color index {bg_r} selected.")
+                        bg_r = select_color(t, bg_r, color_mode, True)
+                        if bg_r < 0:
+                            print_status(t, f"Transparent background selected.")
+                        else:
+                            print_status(t, f"Background color index {bg_r} selected.")
                     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
                     # screen was cleared so needs to be drawn
                     refresh_matrix = True
