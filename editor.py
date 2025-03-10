@@ -342,6 +342,19 @@ def display_matrix(t : blessed.Terminal,
                 color_bg_r = colordata_bg_r[((cy + iy) * cw) + (cx + ix)]
                 color_bg_g = colordata_bg_g[((cy + iy) * cw) + (cx + ix)]
                 color_bg_b = colordata_bg_b[((cy + iy) * cw) + (cx + ix)]
+                if color_bg_r != lastcolor_bg_r or \
+                   color_bg_g != lastcolor_bg_g or \
+                   color_bg_b != lastcolor_bg_b:
+                    if color_bg_r < 0:
+                        print(t.normal, end='')
+                        # fg color gets unset, so assure it'll always
+                        # think it's changed and needs to be retransmitted
+                        lastcolor_fg_r = -1
+                    else:
+                        print(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b), end='')
+                    lastcolor_bg_r = color_bg_r
+                    lastcolor_bg_g = color_bg_g
+                    lastcolor_bg_b = color_bg_b
                 if color_fg_r != lastcolor_fg_r or \
                    color_fg_g != lastcolor_fg_g or \
                    color_fg_b != lastcolor_fg_b:
@@ -349,29 +362,20 @@ def display_matrix(t : blessed.Terminal,
                     lastcolor_fg_r = color_fg_r
                     lastcolor_fg_g = color_fg_g
                     lastcolor_fg_b = color_fg_b
-                if color_bg_r != lastcolor_bg_r or \
-                   color_bg_g != lastcolor_bg_g or \
-                   color_bg_b != lastcolor_bg_b:
-                    if color_bg_r < 0:
-                        print(t.normal, end='')
-                    else:
-                        print(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b), end='')
-                    lastcolor_bg_r = color_bg_r
-                    lastcolor_bg_g = color_bg_g
-                    lastcolor_bg_b = color_bg_b
             else:
                 # paletted modes use the R channel for color value
                 color_fg_r = colordata_fg_r[((cy + iy) * cw) + (cx + ix)]
                 color_bg_r = colordata_bg_r[((cy + iy) * cw) + (cx + ix)]
-                if color_fg_r != lastcolor_fg_r:
-                    print(t.color(color_fg_r), end='')
-                    lastcolor_fg_r = color_fg_r
                 if color_bg_r != lastcolor_bg_r:
                     if color_bg_r < 0:
                         print(t.normal, end='')
+                        lastcolor_fg_r = -1
                     else:
                         print(t.on_color(color_bg_r), end='')
                     lastcolor_bg_r = color_bg_r
+                if color_fg_r != lastcolor_fg_r:
+                    print(t.color(color_fg_r), end='')
+                    lastcolor_fg_r = color_fg_r
 
             cell = make_cell(data, (cx + ix) * 2, (cy + iy) * 4, dw)
             print(CHARS4[cell], end='')
@@ -662,20 +666,20 @@ def save_file(t : blessed.Terminal,
         for iy in range(len(data) // dw // 4):
             # print on every line, because it's normaled at the end of each line
             if color_mode == ColorMode.DIRECT:
-                lastcolor_fg_r = colordata_fg_r[0]
-                lastcolor_fg_g = colordata_fg_g[0]
-                lastcolor_fg_b = colordata_fg_b[0]
-                lastcolor_bg_r = colordata_bg_r[0]
-                lastcolor_bg_g = colordata_bg_g[0]
-                lastcolor_bg_b = colordata_bg_b[0]
+                lastcolor_fg_r = colordata_fg_r[iy * cw]
+                lastcolor_fg_g = colordata_fg_g[iy * cw]
+                lastcolor_fg_b = colordata_fg_b[iy * cw]
+                lastcolor_bg_r = colordata_bg_r[iy * cw]
+                lastcolor_bg_g = colordata_bg_g[iy * cw]
+                lastcolor_bg_b = colordata_bg_b[iy * cw]
                 if lastcolor_bg_r < 0:
                     out.write(t.normal)
                 else:
                     out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
                 out.write(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b))
             else:
-                lastcolor_fg_r = colordata_fg_r[0]
-                lastcolor_bg_r = colordata_bg_r[0]
+                lastcolor_fg_r = colordata_fg_r[iy * cw]
+                lastcolor_bg_r = colordata_bg_r[iy * cw]
                 if lastcolor_bg_r < 0:
                     out.write(t.normal)
                 else:
@@ -690,6 +694,19 @@ def save_file(t : blessed.Terminal,
                     color_bg_r = colordata_bg_r[iy * cw + ix]
                     color_bg_g = colordata_bg_g[iy * cw + ix]
                     color_bg_b = colordata_bg_b[iy * cw + ix]
+                    if color_bg_r != lastcolor_bg_r or \
+                       color_bg_g != lastcolor_bg_g or \
+                       color_bg_b != lastcolor_bg_b:
+                        if color_bg_r < 0:
+                            out.write(t.normal)
+                            # fg color gets unset, so assure it'll always
+                            # think it's changed and needs to be retransmitted
+                            lastcolor_fg_r = -1
+                        else:
+                            out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
+                        lastcolor_bg_r = color_bg_r
+                        lastcolor_bg_g = color_bg_g
+                        lastcolor_bg_b = color_bg_b
                     if color_fg_r != lastcolor_fg_r or \
                        color_fg_g != lastcolor_fg_g or \
                        color_fg_b != lastcolor_fg_b:
@@ -697,29 +714,20 @@ def save_file(t : blessed.Terminal,
                         lastcolor_fg_r = color_fg_r
                         lastcolor_fg_g = color_fg_g
                         lastcolor_fg_b = color_fg_b
-                    if color_bg_r != lastcolor_bg_r or \
-                       color_bg_g != lastcolor_bg_g or \
-                       color_bg_b != lastcolor_bg_b:
-                        if lastcolor_bg_r < 0:
-                            out.write(t.normal)
-                        else:
-                            out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
-                        lastcolor_bg_r = color_bg_r
-                        lastcolor_bg_g = color_bg_g
-                        lastcolor_bg_b = color_bg_b
                 else:
                     # paletted modes use the R channel for color value
                     color_fg_r = colordata_fg_r[iy * cw + ix]
                     color_bg_r = colordata_bg_r[iy * cw + ix]
-                    if color_fg_r != lastcolor_fg_r:
-                        out.write(t.color(color_fg_r))
-                        lastcolor_fg_r = color_fg_r
                     if color_bg_r != lastcolor_bg_r:
-                        if lastcolor_bg_r < 0:
+                        if color_bg_r < 0:
                             out.write(t.normal)
+                            lastcolor_fg_r = -1
                         else:
                             out.write(t.on_color(color_bg_r))
                         lastcolor_bg_r = color_bg_r
+                    if color_fg_r != lastcolor_fg_r:
+                        out.write(t.color(color_fg_r))
+                        lastcolor_fg_r = color_fg_r
 
                 cell = make_cell(data, ix * 2, iy * 4, dw)
                 out.write(CHARS4[cell])
@@ -807,6 +815,8 @@ def load_file(t : blessed.Terminal,
                     bg_r = -1
                     bg_g = -1
                     bg_b = -1
+                    # also technically rewrites fg color
+                    # but this doesn't support default terminal foreground color
                 elif groupdict['color_rgb'] is not None:
                     if color_mode is None:
                         color_mode = ColorMode.DIRECT
@@ -894,7 +904,7 @@ def main():
     x : int = 0
     y : int = 0
     grid : bool = True
-    zoomed_color : bool = False
+    zoomed_color : bool = True
     color_mode : ColorMode = ColorMode.DIRECT
     max_color_mode : ColorMode = ColorMode.DIRECT
     fg_r : int = 0
