@@ -6,6 +6,12 @@ Dependencies:
 python 3
 blessed
 
+Usage:
+    term-42-editor [filename]
+
+    Start the editor with a new blank canvas or specify a filename to load a
+previously created file.
+
 Keys:
 
 Shift+Q - quit
@@ -48,6 +54,7 @@ Shift+S - green -10
 Shift+D - blue -10
 Enter - select
 Escape - cancel
+t - select transparent (background only)
 
 At any text prompt:
 Escape - cancel operation

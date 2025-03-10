@@ -5,6 +5,7 @@ import itertools
 import sys
 from enum import Enum, auto
 import pathlib
+import re
 
 import blessed
 
@@ -12,7 +13,6 @@ import blessed
 # TODO: Add selection/copy/paste.
 # TODO: Add undo.
 # TODO: Add save without color.
-# TODO: Add loading files.
 
 DEFAULT_FILL = True
 ZOOMED_X = 4
@@ -716,6 +716,166 @@ def save_file(t : blessed.Terminal,
             out.write(t.normal)
             out.write('\n')
 
+def load_file(t : blessed.Terminal,
+              max_color_mode : ColorMode,
+              filename : str):
+    color_mode : ColorMode | None = None
+    max_color = 0
+    max_row_len = 0
+    rows = []
+    colordata_fg_r_rows = []
+    colordata_fg_g_rows = []
+    colordata_fg_b_rows = []
+    colordata_bg_r_rows = []
+    colordata_bg_g_rows = []
+    colordata_bg_b_rows = []
+
+    # make these parseable
+    color_rgb_re = re.compile(t.caps['color_rgb'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
+    on_color_rgb_re = re.compile(t.caps['on_color_rgb'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
+    color256_re = re.compile(t.caps['color256'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
+    on_color256_re = re.compile(t.caps['on_color256'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
+
+    with open(filename, 'r') as infile:
+        for line in infile.readlines():
+            fg_r = None
+            fg_g = None
+            fg_b = None
+            bg_r = None
+            bg_g = None
+            bg_b = None
+
+            # 4 rows at a time
+            rows.append(array('i'))
+            rows.append(array('i'))
+            rows.append(array('i'))
+            rows.append(array('i'))
+            colordata_fg_r_rows.append(array('i'))
+            colordata_fg_g_rows.append(array('i'))
+            colordata_fg_b_rows.append(array('i'))
+            colordata_bg_r_rows.append(array('i'))
+            colordata_bg_g_rows.append(array('i'))
+            colordata_bg_b_rows.append(array('i'))
+
+            pos = 0
+            while True:
+                if pos == len(line):
+                    break
+
+                # find color code
+                match = t._caps_compiled_any.match(line[pos:])
+                groupdict = match.groupdict()
+                if groupdict['MISMATCH'] is not None:
+                    if fg_r is None or bg_r is None:
+                        raise ValueError("Couldn't find color code!")
+                    if fg_g is None:
+                        # make sure the arrays have sensible numerical values
+                        fg_g = 0
+                        fg_b = 0
+                        bg_g = 0
+                        bg_b = 0
+
+                    colordata_fg_r_rows[-1].append(fg_r)
+                    colordata_fg_g_rows[-1].append(fg_g)
+                    colordata_fg_b_rows[-1].append(fg_b)
+                    colordata_bg_r_rows[-1].append(bg_r)
+                    colordata_bg_g_rows[-1].append(bg_g)
+                    colordata_bg_b_rows[-1].append(bg_b)
+
+                    cell = CHARS4.index(line[pos])
+                    # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
+                    rows[-4].append(cell & 1)
+                    rows[-3].append((cell & 2) >> 1)
+                    rows[-2].append((cell & 4) >> 2)
+                    rows[-1].append((cell & 8) >> 3)
+                    rows[-4].append((cell & 16) >> 4)
+                    rows[-3].append((cell & 32) >> 5)
+                    rows[-2].append((cell & 64) >> 6)
+                    rows[-1].append((cell & 128) >> 7)
+                elif groupdict['sgr0'] is not None:
+                    # normal (transparent bg)
+                    bg_r = -1
+                    bg_g = -1
+                    bg_b = -1
+                elif groupdict['color_rgb'] is not None:
+                    if color_mode is None:
+                        color_mode = ColorMode.DIRECT
+                    else:
+                        if color_mode != ColorMode.DIRECT:
+                            raise ValueError("Conflicting color code types!")
+
+                    r, g, b = color_rgb_re.match(line[pos:pos+match.span()[1]]).groups()
+                    fg_r = int(r)
+                    fg_g = int(g)
+                    fg_b = int(b)
+                elif groupdict['on_color_rgb'] is not None:
+                    if color_mode is None:
+                        color_mode = ColorMode.DIRECT
+                    else:
+                        if color_mode != ColorMode.DIRECT:
+                            raise ValueError("Conflicting color code types!")
+
+                    r, g, b = on_color_rgb_re.match(line[pos:pos+match.span()[1]]).groups()
+                    bg_r = int(r)
+                    bg_g = int(g)
+                    bg_b = int(b)
+                elif groupdict['color256'] is not None:
+                    if color_mode is None:
+                        color_mode = ColorMode.C256
+                    else:
+                        if color_mode != ColorMode.C256:
+                            raise ValueError("Conflicting color code types!")
+
+                    r = color256_re.match(line[pos:pos+match.span()[1]]).groups()
+                    fg_r = int(r)
+                    max_color = max(max_color, fg_r)
+                elif groupdict['on_color256'] is not None:
+                    if color_mode is None:
+                        color_mode = ColorMode.C256
+                    else:
+                        if color_mode != ColorMode.C256:
+                            raise ValueError("Conflicting color code types!")
+
+                    r = on_color256_re.match(line[pos:pos+match.span()[1]]).groups()
+                    bg_r = int(r)
+                    max_color = max(max_color, bg_r)
+
+                pos += match.span()[1]
+
+            max_row_len = max(max_row_len, len(colordata_fg_r_rows[-1]))
+
+    width = max_row_len
+    height = len(colordata_fg_r_rows)
+
+    if color_mode == ColorMode.C256 and max_color <= 15:
+        color_mode = ColorMode.C16
+
+    # allocate the structures
+    data = array('i', itertools.repeat(0, (width * 2) * (height * 4)))
+    colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+        new_color_data(color_mode, width * 2, height * 4)
+
+    # copy the data in to them
+    for i in range(height):
+        colordata_fg_r[width * i:width * i + len(colordata_fg_r_rows[i])] = colordata_fg_r_rows[i][:]
+        colordata_fg_g[width * i:width * i + len(colordata_fg_g_rows[i])] = colordata_fg_g_rows[i][:]
+        colordata_fg_b[width * i:width * i + len(colordata_fg_b_rows[i])] = colordata_fg_b_rows[i][:]
+        colordata_bg_r[width * i:width * i + len(colordata_bg_r_rows[i])] = colordata_bg_r_rows[i][:]
+        colordata_bg_g[width * i:width * i + len(colordata_bg_g_rows[i])] = colordata_bg_g_rows[i][:]
+        colordata_bg_b[width * i:width * i + len(colordata_bg_b_rows[i])] = colordata_bg_b_rows[i][:]
+        data[width * 2 * 4 * i                  :width * 2 * i                   + len(rows[i * 4    ])] = \
+                rows[i * 4    ][:]
+        data[width * 2 * 4 * i + (width * 2 * 1):width * 2 * i + (width * 2 * 1) + len(rows[i * 4 + 1])] = \
+                rows[i * 4 + 1][:]
+        data[width * 2 * 4 * i + (width * 2 * 2):width * 2 * i + (width * 2 * 2) + len(rows[i * 4 + 2])] = \
+                rows[i * 4 + 2][:]
+        data[width * 2 * 4 * i + (width * 2 * 3):width * 2 * i + (width * 2 * 3) + len(rows[i * 4 + 3])] = \
+                rows[i * 4 + 3][:]
+
+    return width * 2, height * 4, color_mode, data, \
+        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+        colordata_bg_r, colordata_bg_g, colordata_bg_b
 
 def main():
     width : int = 20
@@ -778,15 +938,21 @@ def main():
 
     color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
 
-    data = array('i', itertools.repeat(0, width * height))
-    if DEFAULT_FILL:
-        # fill with some pattern to show it's working
-        for i in range(0, width * height, 3):
-            data[i] = 1
+    if len(sys.argv) > 1:
+        width, height, color_mode, data, \
+            colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+            colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+            load_file(t, max_color_mode, sys.argv[1])
+    else:
+        data = array('i', itertools.repeat(0, width * height))
+        if DEFAULT_FILL:
+            # fill with some pattern to show it's working
+            for i in range(0, width * height, 3):
+                data[i] = 1
 
-    colordata_fg_r, colordata_fg_g, colordata_fg_b, \
-        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-        new_color_data(color_mode, width, height)
+        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+            colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+            new_color_data(color_mode, width, height)
 
     with t.cbreak(), t.fullscreen(), t.hidden_cursor():
         while True:
