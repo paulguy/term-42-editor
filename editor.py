@@ -893,7 +893,7 @@ def main():
                         fg_b = colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)]
                         bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
                         bg_g = colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)]
-                        bg_g = colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)]
+                        bg_b = colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)]
                     else:
                         fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
                         bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
