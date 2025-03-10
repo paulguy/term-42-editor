@@ -772,7 +772,7 @@ def main():
                     refresh_matrix = True
                     x = min(x, width)
                     y = min(y, height)
-                    print_status(t, f"Image resized to {x}, {y}.")
+                    print_status(t, f"Image resized to {width}, {height}.")
                 case KeyActions.GRID:
                     grid = not grid
                     if grid:
