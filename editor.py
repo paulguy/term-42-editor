@@ -175,23 +175,30 @@ def display_zoomed_matrix(t : blessed.Terminal,
                             color_r = colordata_bg_r[cw * ciy + cix]
                             color_g = colordata_bg_g[cw * ciy + cix]
                             color_b = colordata_bg_b[cw * ciy + cix]
+                            color_fg_r = colordata_fg_r[cw * ciy + cix]
+                            color_fg_g = colordata_fg_g[cw * ciy + cix]
+                            color_fg_b = colordata_fg_b[cw * ciy + cix]
                             if len(lastcolor) == 0 or \
                                color_r != lastcolor_r or \
                                color_g != lastcolor_g or \
-                               color_b != lastcolor_b:
+                               color_b != lastcolor_b or \
+                               (color_r < 0 and (color_fg_r != lastcolor_fg_r or
+                                                 color_fg_g != lastcolor_fg_g or
+                                                 color_fg_b != lastcolor_fg_b)):
                                 if color_r < 0:
                                     # transition to transparent background
                                     print(t.normal, end='')
                                     # set foreground
-                                    print(t.color_rgb(colordata_fg_r[cw * ciy + cix],
-                                                      colordata_fg_g[cw * ciy + cix],
-                                                      colordata_fg_b[cw * ciy + cix]), end='')
+                                    print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
                                 else:
                                     print(t.on_color_rgb(color_r, color_g, color_b), end='')
                                     print(t.color_rgb(max(0, 255 - color_r - 64),
                                                       max(0, 255 - color_g - 64),
                                                       max(0, 255 - color_b - 64)), end='')
                                 lastcolor_bg_r = color_r
+                                lastcolor_fg_r = color_fg_r
+                                lastcolor_fg_g = color_fg_g
+                                lastcolor_fg_b = color_fg_b
                                 lastcolor_r = color_r
                                 lastcolor_g = color_g
                                 lastcolor_b = color_b
@@ -222,11 +229,13 @@ def display_zoomed_matrix(t : blessed.Terminal,
                         else:
                             # pixel off (background)
                             color_r = colordata_bg_r[cw * ciy + cix]
+                            color_fg_r = colordata_fg_r[cw * ciy + cix]
                             if len(lastcolor) == 0 or \
-                               color_r != lastcolor_r:
+                               color_r != lastcolor_r or \
+                               (color_r < 0 and color_fg_r != lastcolor_fg_r):
                                 if color_r < 0:
                                     print(t.normal, end='')
-                                    print(t.color(colordata_fg_r[cw * ciy + cix]), end='')
+                                    print(t.color(color_fg_r), end='')
                                 else:
                                     print(t.on_color(color_r), end='')
                                     if color_r == BLACK:
@@ -234,6 +243,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
                                     else:
                                         print(t.color(BLACK), end='')
                                 lastcolor_bg_r = color_r
+                                lastcolor_fg_r = color_fg_r
                                 lastcolor_r = color_r
                                 lastcolor = "#"  # Tag with some non-empty string
                 else:
@@ -385,8 +395,8 @@ def update_matrix(t : blessed.Terminal,
     cy = dy // 4
     cw = dw // 2
 
+    bg_r = colordata_bg_r[cy * cw + cx]
     if color_mode == ColorMode.DIRECT:
-        bg_r = colordata_bg_r[cy * cw + cx]
         if bg_r < 0:
             print(t.normal, end='')
         else:
