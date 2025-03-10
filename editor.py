@@ -740,7 +740,7 @@ def main():
                     newdata = array('i', itertools.repeat(0, newwidth * newheight))
                     newcolordata_fg_r, newcolordata_fg_g, newcolordata_fg_b, \
                         newcolordata_bg_r, newcolordata_bg_g, newcolordata_bg_b = \
-                        new_color_data(color_mode, width, height)
+                        new_color_data(color_mode, newwidth, newheight)
                     smallestwidth = min(width, newwidth)
                     smallestheight = min(height, newheight)
                     for y in range(smallestheight):
