@@ -6,6 +6,7 @@ import sys
 from enum import Enum, auto
 import pathlib
 import re
+import copy
 
 import blessed
 
@@ -14,6 +15,7 @@ import blessed
 # TODO: Add undo.
 # TODO: Add save without color.
 
+UNDO_LEVELS = 10
 DEFAULT_FILL = True
 ZOOMED_X = 4
 ZOOMED_PAD = 4
@@ -46,11 +48,124 @@ class KeyActions(Enum):
     PICK_COLOR = auto()
     SAVE_FILE = auto()
     REDRAW = auto()
+    UNDO = auto()
 
 class ColorMode(Enum):
     C16 = auto()
     C256 = auto()
     DIRECT = auto()
+
+class DataRect:
+    def __init__(self,
+                 x : int, y : int,
+                 w : int, h : int,
+                 dw : int, data : array,
+                 color_mode : ColorMode,
+                 colordata_fg_r : array,
+                 colordata_fg_g : array,
+                 colordata_fg_b : array,
+                 colordata_bg_r : array,
+                 colordata_bg_g : array,
+                 colordata_bg_b : array):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.color_mode = color_mode
+        self.whole_buffer = False
+        if w == dw and h == len(self.colordata_fg_r) // dw:
+            self.whole_buffer = True
+
+        if self.whole_buffer:
+            # if it's the whole thing, just copy it
+            self.data = copy.copy(data)
+            self.colordata_fg_r = copy.copy(colordata.fg_r)
+            if color_mode == ColorMode.DIRECT:
+                self.colordata_fg_g = copy.copy(colordata.fg_g)
+                self.colordata_fg_b = copy.copy(colordata.fg_b)
+                self.colordata_bg_r = copy.copy(colordata.bg_r)
+                self.colordata_bg_g = copy.copy(colordata.bg_g)
+                self.colordata_bg_b = copy.copy(colordata.bg_b)
+        else:
+            # build up the arrays of data to store locally
+            self.data = array('i', itertools.repeat(0, (w * 2) * (h * 4)))
+            self.colordata_fg_r = array('i', itertools.repeat(0, w * h))
+            if color_mode == ColorMode.DIRECT:
+                self.colordata_fg_g = array('i', itertools.repeat(0, w * h))
+                self.colordata_fg_b = array('i', itertools.repeat(0, w * h))
+                self.colordata_bg_r = array('i', itertools.repeat(0, w * h))
+                self.colordata_bg_g = array('i', itertools.repeat(0, w * h))
+                self.colordata_bg_b = array('i', itertools.repeat(0, w * h))
+            cw = dw * 2
+            sw = self.w * 2
+            cx = self.x * 2
+            for i in range(h):
+                self.data[i * (sw * 4)           :i * (sw * 4) +            sw] = \
+                    data[((self.y + i) * (cw * 4)) +            cx:((self.y + i) * (cw * 4)) +            cx + sw]
+                self.data[i * (sw * 4) +  sw     :i * (sw * 4) +  sw +      sw] = \
+                    data[((self.y + i) * (cw * 4)) +  cw +      cx:((self.y + i) * (cw * 4)) +  cw +      cx + sw]
+                self.data[i * (sw * 4) + (sw * 2):i * (sw * 4) + (sw * 2) + sw] = \
+                    data[((self.y + i) * (cw * 4)) + (cw * 2) + cx:((self.y + i) * (cw * 4)) + (cw * 2) + cx + sw]
+                self.data[i * (sw * 4) + (sw * 3):i * (sw * 4) + (sw * 3) + sw] = \
+                    data[((self.y + i) * (cw * 4)) + (cw * 3) + cx:((self.y + i) * (cw * 4)) + (cw * 3) + cx + sw]
+
+                self.colordata_fg_r[i * self.w:i * self.w + self.w] = \
+                    colordata_fg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                if color_mode == ColorMode.DIRECT:
+                    self.colordata_fg_g[i * self.w:i * self.w + self.w] = \
+                        colordata_fg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                    self.colordata_fg_b[i * self.w:i * self.w + self.w] = \
+                        colordata_fg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                    self.colordata_bg_r[i * self.w:i * self.w + self.w] = \
+                        colordata_bg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                    self.colordata_bg_g[i * self.w:i * self.w + self.w] = \
+                        colordata_bg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                    self.colordata_bg_b[i * self.w:i * self.w + self.w] = \
+                        colordata_bg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+
+    def apply(self,
+              dw : int, data : array,
+              colordata_fg_r : array,
+              colordata_fg_g : array,
+              colordata_fg_b : array,
+              colordata_bg_r : array,
+              colordata_bg_g : array,
+              colordata_bg_b : array):
+        if self.whole_buffer:
+            # if it's the whole thing, just return it
+            return self.w, self.h, self.data, \
+                   self.colordata_fg_r, self.colordata_fg_g, self.colordata_fg_b, \
+                   self.colordata_bg_r, self.colordata_bg_g, self.colordata_bg_b
+        else:
+            cw = dw * 2
+            sw = self.w * 2
+            cx = self.x * 2
+            # reverse of building the arrays?
+            for i in range(len(self.colordata_fg_r) // self.w):
+                data[((self.y + i) * (cw * 4)) +            cx:((self.y + i) * (cw * 4)) +            cx + sw] = \
+                    self.data[i * (sw * 4)           :i * (sw * 4) +            sw]
+                data[((self.y + i) * (cw * 4)) +  cw +      cx:((self.y + i) * (cw * 4)) +  cw +      cx + sw] = \
+                    self.data[i * (sw * 4) +  sw     :i * (sw * 4) +  sw +      sw]
+                data[((self.y + i) * (cw * 4)) + (cw * 2) + cx:((self.y + i) * (cw * 4)) + (cw * 2) + cx + sw] = \
+                    self.data[i * (sw * 4) + (sw * 2):i * (sw * 4) + (sw * 2) + sw]
+                data[((self.y + i) * (cw * 4)) + (cw * 3) + cx:((self.y + i) * (cw * 4)) + (cw * 3) + cx + sw] = \
+                    self.data[i * (sw * 4) + (sw * 3):i * (sw * 4) + (sw * 3) + sw]
+
+                colordata_fg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                    self.colordata_fg_r[i * self.w:i * self.w + self.w]
+                if self.color_mode == ColorMode.DIRECT:
+                    colordata_fg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                        self.colordata_fg_g[i * self.w:i * self.w + self.w]
+                    colordata_fg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                        self.colordata_fg_b[i * self.w:i * self.w + self.w]
+                    colordata_bg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                        self.colordata_bg_r[i * self.w:i * self.w + self.w]
+                    colordata_bg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                        self.colordata_bg_g[i * self.w:i * self.w + self.w]
+                    colordata_bg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
+                        self.colordata_bg_b[i * self.w:i * self.w + self.w]
+
+        return None, None, None, None, None, None, None, None, None
+
 
 BLACK = 0
 WHITE = 15
@@ -898,6 +1013,63 @@ def load_file(t : blessed.Terminal,
         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
         colordata_bg_r, colordata_bg_g, colordata_bg_b
 
+def make_undo(undos : list, undopos : int,
+              x : int, y : int, w : int, h : int,
+              dw : int, data : array,
+              color_mode : ColorMode,
+              colordata_fg_r : array,
+              colordata_fg_g : array,
+              colordata_fg_b : array,
+              colordata_bg_r : array,
+              colordata_bg_g : array,
+              colordata_bg_b : array):
+    undopos += 1
+    if undopos == len(undos):
+        undopos = 0
+
+    # convert from pixels to character cells
+    undos[undopos] = DataRect(x // 2, y // 4,
+                              ((x + w) // 2) - (x // 2) + 1, ((y + h) // 4) - (y // 4) + 1,
+                              dw // 2, data, color_mode,
+                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+    return undopos
+
+def apply_undo(undos : list, undopos : int,
+               dw : int, dh : int, data : array,
+               color_mode : ColorMode,
+               colordata_fg_r : array,
+               colordata_fg_g : array,
+               colordata_fg_b : array,
+               colordata_bg_r : array,
+               colordata_bg_g : array,
+               colordata_bg_b : array):
+    if undos[undopos] is None:
+        return undopos, dw, dh, data, \
+               colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+               colordata_bg_r, colordata_bg_g, colordata_bg_b
+
+    new_dw, new_dh, new_data, \
+        new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
+        new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b = \
+        undos[undopos].apply(dw // 2, data,
+                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                             colordata_bg_r, colordata_bg_g, colordata_bg_b)
+    undos[undopos] = None
+    undopos -= 1
+    if undopos < 0:
+        undopos = len(undos) - 1
+    if new_data is not None:
+        # return the new one, convert dimensions in character cells to pixels
+        return undopos, new_dw * 2, new_dh * 4, new_data, \
+               new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
+               new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b
+
+    # return back the originals
+    return undopos, dw, dh, data, \
+           colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+           colordata_bg_r, colordata_bg_g, colordata_bg_b
+
 def main():
     width : int = 20
     height : int = 20
@@ -915,6 +1087,8 @@ def main():
     bg_b : int = 0
     color_str : str = None
     refresh_matrix = True
+    undos : list[None | DataRect] = [None for x in range(UNDO_LEVELS)]
+    undopos = 0
 
     t = blessed.Terminal()
 
@@ -942,7 +1116,8 @@ def main():
         ord('p'): KeyActions.PUT_COLOR,
         ord('P'): KeyActions.PICK_COLOR,
         ord('S'): KeyActions.SAVE_FILE,
-        ord('R'): KeyActions.REDRAW
+        ord('R'): KeyActions.REDRAW,
+        ord('U'): KeyActions.UNDO
     }
 
     COLORS = {
@@ -1017,6 +1192,12 @@ def main():
                     y += 1
                 case KeyActions.TOGGLE:
                     if x >= 0 and x < width and y >= 0 and y < height:
+                        undopos = make_undo(undos, undopos,
+                                            x, y, 1, 1, width, data,
+                                            color_mode,
+                                            colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                            colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
                         data[width * y + x] = not data[width * y + x]
                         update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
@@ -1044,6 +1225,16 @@ def main():
                     if newheight < 4 or newheight % 4 != 0:
                         print_status(t, "Height must be non-zero and divisible by 4.")
                         continue
+                    if newwidth == width and newheight == height:
+                        print_status(t, "New width and height are the same.")
+                        continue
+
+                    undopos = make_undo(undos, undopos,
+                                        0, 0, width, height, width, data,
+                                        color_mode,
+                                        colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                        colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
                     newdata = array('i', itertools.repeat(0, newwidth * newheight))
                     newcolordata_fg_r, newcolordata_fg_g, newcolordata_fg_b, \
                         newcolordata_bg_r, newcolordata_bg_g, newcolordata_bg_b = \
@@ -1094,6 +1285,11 @@ def main():
                 case KeyActions.CLEAR:
                     ans = prompt_yn(t, "This will clear the image, are you sure?")
                     if ans:
+                        undopos = make_undo(undos, undopos,
+                                            0, 0, width, height, width, data,
+                                            color_mode,
+                                            colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                            colordata_bg_r, colordata_bg_g, colordata_bg_b)
                         data = array('i', itertools.repeat(0, width * height))
                         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                             colordata_bg_r, colordata_bg_g, colordata_bg_b = \
@@ -1182,6 +1378,12 @@ def main():
                     # screen was cleared so needs to be drawn
                     refresh_matrix = True
                 case KeyActions.PUT_COLOR:
+                    undopos = make_undo(undos, undopos,
+                                        x, y, 1, 1, width, data,
+                                        color_mode,
+                                        colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                        colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
                     if color_mode == ColorMode.DIRECT:
                         colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
                         colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)] = fg_g
@@ -1226,6 +1428,22 @@ def main():
                 case KeyActions.REDRAW:
                     clear_screen(t)
                     refresh_matrix = True
+                case KeyActions.UNDO:
+                    last_undopos = undopos
+                    undopos, width, height, data, \
+                        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+                        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+                        apply_undo(undos, undopos,
+                                   width, height, data,
+                                   color_mode,
+                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                    if undopos == last_undopos:
+                        print_status(t, "No more undos.")
+                    else:
+                        clear_screen(t)
+                        refresh_matrix = True
+                        print_status(t, "Undid.")
  
 
 if __name__ == '__main__':
