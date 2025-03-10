@@ -844,36 +844,37 @@ def load_file(t : blessed.Terminal,
 
             max_row_len = max(max_row_len, len(colordata_fg_r_rows[-1]))
 
-    width = max_row_len
-    height = len(colordata_fg_r_rows)
+    cwidth = max_row_len
+    width = cwidth * 2
+    height = len(colordata_fg_r_rows) * 4
 
     if color_mode == ColorMode.C256 and max_color <= 15:
         color_mode = ColorMode.C16
 
     # allocate the structures
-    data = array('i', itertools.repeat(0, (width * 2) * (height * 4)))
+    data = array('i', itertools.repeat(0, width * height))
     colordata_fg_r, colordata_fg_g, colordata_fg_b, \
         colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-        new_color_data(color_mode, width * 2, height * 4)
+        new_color_data(color_mode, width, height)
 
     # copy the data in to them
-    for i in range(height):
-        colordata_fg_r[width * i:width * i + len(colordata_fg_r_rows[i])] = colordata_fg_r_rows[i][:]
-        colordata_fg_g[width * i:width * i + len(colordata_fg_g_rows[i])] = colordata_fg_g_rows[i][:]
-        colordata_fg_b[width * i:width * i + len(colordata_fg_b_rows[i])] = colordata_fg_b_rows[i][:]
-        colordata_bg_r[width * i:width * i + len(colordata_bg_r_rows[i])] = colordata_bg_r_rows[i][:]
-        colordata_bg_g[width * i:width * i + len(colordata_bg_g_rows[i])] = colordata_bg_g_rows[i][:]
-        colordata_bg_b[width * i:width * i + len(colordata_bg_b_rows[i])] = colordata_bg_b_rows[i][:]
-        data[width * 2 * 4 * i                  :width * 2 * i                   + len(rows[i * 4    ])] = \
-                rows[i * 4    ][:]
-        data[width * 2 * 4 * i + (width * 2 * 1):width * 2 * i + (width * 2 * 1) + len(rows[i * 4 + 1])] = \
-                rows[i * 4 + 1][:]
-        data[width * 2 * 4 * i + (width * 2 * 2):width * 2 * i + (width * 2 * 2) + len(rows[i * 4 + 2])] = \
-                rows[i * 4 + 2][:]
-        data[width * 2 * 4 * i + (width * 2 * 3):width * 2 * i + (width * 2 * 3) + len(rows[i * 4 + 3])] = \
-                rows[i * 4 + 3][:]
+    for i in range(height // 4):
+        colordata_fg_r[cwidth * i:cwidth * i + len(colordata_fg_r_rows[i])] = colordata_fg_r_rows[i][:]
+        colordata_fg_g[cwidth * i:cwidth * i + len(colordata_fg_g_rows[i])] = colordata_fg_g_rows[i][:]
+        colordata_fg_b[cwidth * i:cwidth * i + len(colordata_fg_b_rows[i])] = colordata_fg_b_rows[i][:]
+        colordata_bg_r[cwidth * i:cwidth * i + len(colordata_bg_r_rows[i])] = colordata_bg_r_rows[i][:]
+        colordata_bg_g[cwidth * i:cwidth * i + len(colordata_bg_g_rows[i])] = colordata_bg_g_rows[i][:]
+        colordata_bg_b[cwidth * i:cwidth * i + len(colordata_bg_b_rows[i])] = colordata_bg_b_rows[i][:]
+        data[width * 4 * i              :width * 4 * i               + len(rows[i * 4    ])] = \
+            rows[i * 4    ][:]
+        data[width * 4 * i + (width * 1):width * 4 * i + (width * 1) + len(rows[i * 4 + 1])] = \
+            rows[i * 4 + 1][:]
+        data[width * 4 * i + (width * 2):width * 4 * i + (width * 2) + len(rows[i * 4 + 2])] = \
+            rows[i * 4 + 2][:]
+        data[width * 4 * i + (width * 3):width * 4 * i + (width * 3) + len(rows[i * 4 + 3])] = \
+            rows[i * 4 + 3][:]
 
-    return width * 2, height * 4, color_mode, data, \
+    return width, height, color_mode, data, \
         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
         colordata_bg_r, colordata_bg_g, colordata_bg_b
 
