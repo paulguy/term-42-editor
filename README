@@ -33,6 +33,8 @@ p - put color in 2x4 cell
 Shift+P - pick color from 2x4 cell
 Shift+S - save file
 Shift+R - redraw screen
+u - undo
+Shift+U - redo
 
 In palette selection screen:
 Arrows - move around
