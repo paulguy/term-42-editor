@@ -12,6 +12,9 @@ import blessed
 
 # TODO: Add line and fill.
 # TODO: Add save without color.
+# TODO: Visible canvas border.
+# TODO: Visible selection area on the preview.
+# TODO: Separate cell and pixel selection modes with different functions.
 
 UNDO_LEVELS = 100
 DEFAULT_FILL = True
@@ -1056,6 +1059,7 @@ def load_file(t : blessed.Terminal,
     on_color_rgb_re = re.compile(t.caps['on_color_rgb'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
     color256_re = re.compile(t.caps['color256'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
     on_color256_re = re.compile(t.caps['on_color256'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
+    set_a_attributes1_re = re.compile(t.caps['set_a_attributes1'].re_compiled.pattern.replace("\\d+", "(\\d+)"))
 
     with open(filename, 'r') as infile:
         for line in infile.readlines():
@@ -1162,6 +1166,32 @@ def load_file(t : blessed.Terminal,
                     r = on_color256_re.match(line[pos:pos+match.span()[1]]).groups()
                     bg_r = int(r)
                     max_color = max(max_color, bg_r)
+                elif groupdict['set_a_attributes1'] is not None:
+                    attrib, = set_a_attributes1_re.match(line[pos:pos+match.span()[1]]).groups()
+                    attrib = int(attrib)
+
+                    if (attrib >= 30 and attrib <= 37) or \
+                       (attrib >= 40 and attrib <= 47) or \
+                       (attrib >= 90 and attrib <= 97) or \
+                       (attrib >= 99 and attrib <= 107):
+                        if color_mode is None:
+                            color_mode = ColorMode.C256
+                        else:
+                            if color_mode != ColorMode.C256:
+                                raise ValueError("Conflicting color code types!")
+
+                        if attrib >= 30 and attrib <= 37:
+                            fg_r = attrib - 30
+                            max_color = max(max_color, fg_r)
+                        elif attrib >= 40 and attrib <= 47:
+                            bg_r = attrib - 40
+                            max_color = max(max_color, bg_r)
+                        elif attrib >= 90 and attrib <= 97:
+                            fg_r = attrib - 90 + 8
+                            max_color = max(max_color, fg_r)
+                        elif attrib >= 100 and attrib <= 107:
+                            bg_r = attrib - 100 + 8
+                            max_color = max(max_color, bg_r)
 
                 pos += match.span()[1]
 
