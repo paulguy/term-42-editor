@@ -1401,7 +1401,16 @@ def main():
                                   COLORS, grid, zoomed_color, color_mode, data,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
-            print_status(t, f"{color_mode.name} {x}, {y}", 1)
+            if color_mode == ColorMode.DIRECT:
+                bgstr = "Transparent"
+                if bg_r >= 0:
+                    bgstr = f"{bg_r} {bg_g} {bg_b}"
+                print_status(t, f"{color_mode.name} {x}, {y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
+            else:
+                bgstr = "Transparent"
+                if bg_r >= 0:
+                    bgstr = f"{bg_r}"
+                print_status(t, f"{color_mode.name} {x}, {y}  {fg_r}  {bgstr}", 1)
             sys.stdout.flush()
             _, key = inkey_numeric(t)
 
