@@ -1210,9 +1210,12 @@ def make_copy(x : int, y : int, w : int, h : int,
               colordata_bg_r : array,
               colordata_bg_g : array,
               colordata_bg_b : array):
-    # convert from pixels to character cells
-    return DataRect(x // 2, y // 4,
-                    ((x + w) // 2) - (x // 2), ((y + h) // 4) - (y // 4),
+    # convert from pixels to character cells which the dimensions occupy
+    cw = w // 2 + (w % 2)
+    ch = h // 4
+    if ((y + h) % 4) - (y % 4) > 0:
+        ch += 1
+    return DataRect(x // 2, y // 4, cw, ch,
                     dw // 2, data, color_mode,
                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
                     colordata_bg_r, colordata_bg_g, colordata_bg_b)
@@ -1437,11 +1440,11 @@ def main():
                         else:
                             print_status(t, f"Zoomed view color toggled off.")
                     case KeyActions.COPY:
-                        # get top left (1) and bottom right (2) in character cell boundaries
-                        sx1 = min(x, select_x) // 2 * 2
-                        sy1 = min(y, select_y) // 4 * 4
-                        sx2 = max(x, select_x) // 2 * 2 + 2
-                        sy2 = max(y, select_y) // 4 * 4 + 4
+                        # get top left (1) and bottom right (2)
+                        sx1 = min(x, select_x)
+                        sy1 = min(y, select_y)
+                        sx2 = max(x, select_x) + 1
+                        sy2 = max(y, select_y) + 1
 
                         # clamp
                         sx1 = max(0, sx1)
