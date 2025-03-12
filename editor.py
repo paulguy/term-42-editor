@@ -11,7 +11,6 @@ import copy
 import blessed
 
 # TODO: Add line and fill.
-# TODO: Add selection/copy/paste.
 # TODO: Add save without color.
 
 UNDO_LEVELS = 100
@@ -25,6 +24,9 @@ CHARS4 = array('w', ' 𜺨𜴀▘𜴉𜴊🯦𜴍𜺣𜴶𜴹𜴺▖𜵅𜵈▌�
                     '𜴘𜴙𜴜𜴝𜴧𜴨𜴫𜴬𜵑𜵒𜵕𜵖𜵡𜵢𜵥𜵦𜴚𜴛𜴞𜴟𜴩𜴪𜴭𜴮𜵓𜵔𜵗𜵘𜵣𜵤𜵧𜵨🯧𜴠𜴣𜴤𜴯𜴰𜴳𜴴𜵙𜵚𜵝𜵞𜵩𜵪𜵭𜵮𜴡𜴢𜴥𜴦𜴱𜴲𜴵🮅𜵛𜵜𜵟𜵠𜵫𜵬𜵯𜵰'
                     '𜺠𜵱𜵴𜵵𜶀𜶁𜶄𜶅▂𜶬𜶯𜶰𜶻𜶼𜶿𜷀𜵲𜵳𜵶𜵷𜶂𜶃𜶆𜶇𜶭𜶮𜶱𜶲𜶽𜶾𜷁𜷂𜵸𜵹𜵼𜵽𜶈𜶉𜶌𜶍𜶳𜶴𜶷𜶸𜷃𜷄𜷇𜷈𜵺𜵻𜵾𜵿𜶊𜶋𜶎𜶏𜶵𜶶𜶹𜶺𜷅𜷆𜷉𜷊'
                     '▗𜶐𜶓▚𜶜𜶝𜶠𜶡𜷋𜷌𜷏𜷐▄𜷛𜷞▙𜶑𜶒𜶔𜶕𜶞𜶟𜶢𜶣𜷍𜷎𜷑𜷒𜷜𜷝𜷟𜷠𜶖𜶗𜶙𜶚𜶤𜶥𜶨𜶩𜷓𜷔𜷗𜷘𜷡𜷢▆𜷤▐𜶘𜶛▜𜶦𜶧𜶪𜶫𜷕𜷖𜷙𜷚▟𜷣𜷥█')
+
+
+t = blessed.Terminal()
 
 class KeyActions(Enum):
     NONE = auto()
@@ -49,6 +51,126 @@ class KeyActions(Enum):
     REDRAW = auto()
     UNDO = auto()
     REDO = auto()
+    SELECT = auto()
+    CONFIRM = auto()
+    CANCEL = auto()
+    PASTE = auto()
+
+    # for select_color_rgb
+    INC_RED = auto()
+    INC_GREEN = auto()
+    INC_BLUE = auto()
+    DEC_RED = auto()
+    DEC_GREEN = auto()
+    DEC_BLUE = auto()
+    INC_FAST_RED = auto()
+    INC_FAST_GREEN = auto()
+    INC_FAST_BLUE = auto()
+    DEC_FAST_RED = auto()
+    DEC_FAST_GREEN = auto()
+    DEC_FAST_BLUE = auto()
+    TRANSPARENT = auto()
+
+    # for selection
+    COPY = auto()
+
+KEY_ACTIONS = {
+    ord('Q'): KeyActions.QUIT,
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('a'): KeyActions.MOVE_LEFT,
+    ord('d'): KeyActions.MOVE_RIGHT,
+    ord('w'): KeyActions.MOVE_UP,
+    ord('s'): KeyActions.MOVE_DOWN,
+    ord(' '): KeyActions.TOGGLE,
+    ord('r'): KeyActions.RESIZE,
+    ord('g'): KeyActions.GRID,
+    ord('z'): KeyActions.ZOOMED_COLOR,
+    ord('X'): KeyActions.CLEAR,
+    t.KEY_HOME: KeyActions.HOME,
+    ord('h'): KeyActions.HOME,
+    ord('e'): KeyActions.EDGE,
+    ord('M'): KeyActions.COLOR_MODE,
+    ord('c'): KeyActions.SELECT_FG_COLOR,
+    ord('C'): KeyActions.SELECT_BG_COLOR,
+    ord('p'): KeyActions.PUT_COLOR,
+    ord('P'): KeyActions.PICK_COLOR,
+    ord('S'): KeyActions.SAVE_FILE,
+    ord('R'): KeyActions.REDRAW,
+    ord('u'): KeyActions.UNDO,
+    ord('U'): KeyActions.REDO,
+    ord('v'): KeyActions.SELECT,
+    ord('V'): KeyActions.PASTE
+}
+
+KEY_ACTIONS_SELECT = {
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('a'): KeyActions.MOVE_LEFT,
+    ord('d'): KeyActions.MOVE_RIGHT,
+    ord('w'): KeyActions.MOVE_UP,
+    ord('s'): KeyActions.MOVE_DOWN,
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    ord('z'): KeyActions.ZOOMED_COLOR,
+    ord('c'): KeyActions.COPY
+}
+
+KEY_ACTIONS_PROMPT = {
+    t.KEY_ENTER: KeyActions.CONFIRM,
+    t.KEY_ESCAPE: KeyActions.CANCEL
+}
+
+KEY_ACTIONS_COLOR_RGB = {
+    t.KEY_ENTER: KeyActions.CONFIRM,
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    ord('q'): KeyActions.INC_RED,
+    ord('w'): KeyActions.INC_GREEN,
+    ord('e'): KeyActions.INC_BLUE,
+    ord('a'): KeyActions.DEC_RED,
+    ord('s'): KeyActions.DEC_GREEN,
+    ord('d'): KeyActions.DEC_BLUE,
+    ord('Q'): KeyActions.INC_FAST_RED,
+    ord('W'): KeyActions.INC_FAST_GREEN,
+    ord('E'): KeyActions.INC_FAST_BLUE,
+    ord('A'): KeyActions.DEC_FAST_RED,
+    ord('S'): KeyActions.DEC_FAST_GREEN,
+    ord('D'): KeyActions.DEC_FAST_BLUE,
+    ord('t'): KeyActions.TRANSPARENT
+}
+
+KEY_ACTIONS_COLOR = {
+    t.KEY_ENTER: KeyActions.CONFIRM,
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('a'): KeyActions.MOVE_LEFT,
+    ord('d'): KeyActions.MOVE_RIGHT,
+    ord('w'): KeyActions.MOVE_UP,
+    ord('s'): KeyActions.MOVE_DOWN,
+    ord('t'): KeyActions.TRANSPARENT
+}
+
+def key_to_action(key_actions : dict[int, KeyActions], key : int) -> KeyActions:
+    # convert to an action
+    try:
+        return key_actions[key]
+    except KeyError:
+        pass
+
+    return KeyActions.NONE
+
+DEFAULT_BG = 0 # BLACK
+DEFAULT_FG = 15 # WHITE
+COLORS = {
+    False: f"{t.color(DEFAULT_FG)}{t.on_color(DEFAULT_BG)}",
+    True:  f"{t.color(DEFAULT_BG)}{t.on_color(DEFAULT_FG)}"
+}
 
 class ColorMode(Enum):
     C16 = auto()
@@ -72,19 +194,19 @@ class DataRect:
         self.w = w
         self.color_mode = color_mode
         self.whole_buffer = False
-        if w == dw and h == len(self.colordata_fg_r) // dw:
+        if w == dw and h == len(colordata_fg_r) // dw:
             self.whole_buffer = True
 
         if self.whole_buffer:
             # if it's the whole thing, just copy it
             self.data = copy.copy(data)
-            self.colordata_fg_r = copy.copy(colordata.fg_r)
+            self.colordata_fg_r = copy.copy(colordata_fg_r)
             if color_mode == ColorMode.DIRECT:
-                self.colordata_fg_g = copy.copy(colordata.fg_g)
-                self.colordata_fg_b = copy.copy(colordata.fg_b)
-                self.colordata_bg_r = copy.copy(colordata.bg_r)
-                self.colordata_bg_g = copy.copy(colordata.bg_g)
-                self.colordata_bg_b = copy.copy(colordata.bg_b)
+                self.colordata_fg_g = copy.copy(colordata_fg_g)
+                self.colordata_fg_b = copy.copy(colordata_fg_b)
+                self.colordata_bg_r = copy.copy(colordata_bg_r)
+                self.colordata_bg_g = copy.copy(colordata_bg_g)
+                self.colordata_bg_b = copy.copy(colordata_bg_b)
         else:
             # build up the arrays of data to store locally
             self.data = array('i', itertools.repeat(0, (w * 2) * (h * 4)))
@@ -122,6 +244,9 @@ class DataRect:
                     self.colordata_bg_b[i * self.w:i * self.w + self.w] = \
                         colordata_bg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
 
+    def get_dims(self):
+        return self.w, len(self.colordata_fg_r) // self.w
+
     def apply(self,
               dw : int, data : array,
               colordata_fg_r : array,
@@ -129,64 +254,81 @@ class DataRect:
               colordata_fg_b : array,
               colordata_bg_r : array,
               colordata_bg_g : array,
-              colordata_bg_b : array):
-        if self.whole_buffer:
+              colordata_bg_b : array,
+              x : int = -1, y : int = -1):
+        other_dest : bool = False
+        # dw, x and y should be given in characer cell dimensions
+        w, h = self.get_dims()
+        if x >= 0:
+            if y == -1:
+                raise ValueError("X and Y should both or neither be set.")
+            if x + w > dw:
+                w = dw - x
+            dh = len(colordata_fg_r) // dw
+            if y + h > dh:
+                h = dh - y
+            other_dest = True
+        else:
+            x = self.x
+            y = self.y
+
+        if not other_dest and self.whole_buffer:
             # if it's the whole thing, just return it
-            return self.w, self.h, self.data, \
+            return w, h, self.data, \
                    self.colordata_fg_r, self.colordata_fg_g, self.colordata_fg_b, \
                    self.colordata_bg_r, self.colordata_bg_g, self.colordata_bg_b
         else:
             cw = dw * 2
             sw = self.w * 2
-            cx = self.x * 2
+            cx = x * 2
             # reverse of building the arrays?
-            for i in range(len(self.colordata_fg_r) // self.w):
-                data[((self.y + i) * (cw * 4)) +            cx:((self.y + i) * (cw * 4)) +            cx + sw] = \
-                    self.data[i * (sw * 4)           :i * (sw * 4) +            sw]
-                data[((self.y + i) * (cw * 4)) +  cw +      cx:((self.y + i) * (cw * 4)) +  cw +      cx + sw] = \
-                    self.data[i * (sw * 4) +  sw     :i * (sw * 4) +  sw +      sw]
-                data[((self.y + i) * (cw * 4)) + (cw * 2) + cx:((self.y + i) * (cw * 4)) + (cw * 2) + cx + sw] = \
-                    self.data[i * (sw * 4) + (sw * 2):i * (sw * 4) + (sw * 2) + sw]
-                data[((self.y + i) * (cw * 4)) + (cw * 3) + cx:((self.y + i) * (cw * 4)) + (cw * 3) + cx + sw] = \
-                    self.data[i * (sw * 4) + (sw * 3):i * (sw * 4) + (sw * 3) + sw]
+            for i in range(h):
+                data[((y + i) * (cw * 4)) +            cx:((y + i) * (cw * 4)) +            cx + (w * 2)] = \
+                    self.data[i * (sw * 4)           :i * (sw * 4) +            (w * 2)]
+                data[((y + i) * (cw * 4)) +  cw +      cx:((y + i) * (cw * 4)) +  cw +      cx + (w * 2)] = \
+                    self.data[i * (sw * 4) +  sw     :i * (sw * 4) +  sw +      (w * 2)]
+                data[((y + i) * (cw * 4)) + (cw * 2) + cx:((y + i) * (cw * 4)) + (cw * 2) + cx + (w * 2)] = \
+                    self.data[i * (sw * 4) + (sw * 2):i * (sw * 4) + (sw * 2) + (w * 2)]
+                data[((y + i) * (cw * 4)) + (cw * 3) + cx:((y + i) * (cw * 4)) + (cw * 3) + cx + (w * 2)] = \
+                    self.data[i * (sw * 4) + (sw * 3):i * (sw * 4) + (sw * 3) + (w * 2)]
 
-                colordata_fg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                    self.colordata_fg_r[i * self.w:i * self.w + self.w]
+                colordata_fg_r[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                    self.colordata_fg_r[i * self.w:i * self.w + w]
                 if self.color_mode == ColorMode.DIRECT:
-                    colordata_fg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                        self.colordata_fg_g[i * self.w:i * self.w + self.w]
-                    colordata_fg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                        self.colordata_fg_b[i * self.w:i * self.w + self.w]
-                    colordata_bg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                        self.colordata_bg_r[i * self.w:i * self.w + self.w]
-                    colordata_bg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                        self.colordata_bg_g[i * self.w:i * self.w + self.w]
-                    colordata_bg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w] = \
-                        self.colordata_bg_b[i * self.w:i * self.w + self.w]
+                    colordata_fg_g[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                        self.colordata_fg_g[i * self.w:i * self.w + w]
+                    colordata_fg_b[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                        self.colordata_fg_b[i * self.w:i * self.w + w]
+                    colordata_bg_r[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                        self.colordata_bg_r[i * self.w:i * self.w + w]
+                    colordata_bg_g[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                        self.colordata_bg_g[i * self.w:i * self.w + w]
+                    colordata_bg_b[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                        self.colordata_bg_b[i * self.w:i * self.w + w]
 
         return None, None, None, None, None, None, None, None, None
 
-
-BLACK = 0
-WHITE = 15
 COLOR_PREVIEW = "𜶉𜶉"
 CURSOR = "🯧🯦"
 BLOCK = "██"
 
-TILE_CURSOR = 7
-TILE_INVERT = 14
+TILE_CURSOR = 9
+TILE_INVERT = 18
 TILE_TOPLEFT = 1
 TILE_LEFT = 2
 TILE_BOTTOMLEFT = 3
 TILE_TOPRIGHT = 4
 TILE_RIGHT = 5
 TILE_BOTTOMRIGHT = 6
-TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥",
-         "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨")
+TILE_TOP = 7
+TILE_BOTTOM = 8
+TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🮂🮂", "▂▂", "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥", "𜴢𜴏", "𜷓𜶿",
+         "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢")
 def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
                           dw : int, dh : int,
+                          select_x : int, select_y : int,
                           colors : dict[bool],
                           grid : bool, use_color : bool,
                           color_mode : ColorMode,
@@ -203,18 +345,19 @@ def display_zoomed_matrix(t : blessed.Terminal,
     cy = dy // 4
     cw = dw // 2
 
-    lastcolor_r : int = None
-    lastcolor_g : int = None
-    lastcolor_b : int = None
-    lastcolor_fg_r = colordata_fg_r[cw * cy + cx]
-    lastcolor_fg_g = colordata_fg_g[cw * cy + cx]
-    lastcolor_fg_b = colordata_fg_b[cw * cy + cx]
-    # only need R to determine transparency
-    lastcolor_bg_r = colordata_bg_r[cw * cy + cx]
     lastcolor : str = ""
+
+    if dy > dh:
+        # if past the bottom, print normals
+        print(t.normal, end='')
 
     for iy in range(pad * 2 + 1):
         print(t.move_xy(x, y + iy), end='')
+
+        if dx > dw:
+            # if to the right print normals
+            print(t.normal, end='')
+            lastcolor = ""
 
         for ix in range(pad * 2 + 1):
             tile = 0
@@ -251,6 +394,15 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 # set color
                 # This is waaaaaay complicated and probably some remaining bugs
                 if use_color:
+                    lastcolor_r : int = None
+                    lastcolor_g : int = None
+                    lastcolor_b : int = None
+                    lastcolor_fg_r = colordata_fg_r[cw * cy + cx]
+                    lastcolor_fg_g = colordata_fg_g[cw * cy + cx]
+                    lastcolor_fg_b = colordata_fg_b[cw * cy + cx]
+                    # only need R to determine transparency
+                    lastcolor_bg_r = colordata_bg_r[cw * cy + cx]
+
                     ciy : int = (dy + iy) // 4
                     cix : int = (dx + ix) // 2
                     if color_mode == ColorMode.DIRECT:
@@ -331,10 +483,10 @@ def display_zoomed_matrix(t : blessed.Terminal,
                                     print(t.color(color_r), end='')
                                 else:
                                     print(t.on_color(color_r), end='')
-                                    if color_r == BLACK:
-                                        print(t.color(WHITE), end='')
+                                    if color_r == DEFAULT_BG:
+                                        print(t.color(DEFAULT_FG), end='')
                                     else:
-                                        print(t.color(BLACK), end='')
+                                        print(t.color(DEFAULT_BG), end='')
                                 lastcolor_bg_r = color_bg_r
                                 lastcolor_fg_r = color_r
                                 lastcolor_r = color_r
@@ -353,10 +505,10 @@ def display_zoomed_matrix(t : blessed.Terminal,
                                     print(t.color(color_fg_r), end='')
                                 else:
                                     print(t.on_color(color_r), end='')
-                                    if color_r == BLACK:
-                                        print(t.color(WHITE), end='')
+                                    if color_r == DEFAULT_BG:
+                                        print(t.color(DEFAULT_FG), end='')
                                     else:
-                                        print(t.color(BLACK), end='')
+                                        print(t.color(DEFAULT_BG), end='')
                                 lastcolor_bg_r = color_r
                                 lastcolor_fg_r = color_fg_r
                                 lastcolor_r = color_r
@@ -367,18 +519,53 @@ def display_zoomed_matrix(t : blessed.Terminal,
                         print(color, end='')
                     lastcolor = color
 
-                if grid:
-                    if (dx + ix) % 2 == 0:
-                        if (dy + iy) % 4 == 0:
+                if select_x >= 0:
+                    px = dx + ix
+                    py = dy + iy
+
+                    sx1 = min(dx + pad, select_x) // 2 * 2
+                    sy1 = min(dy + pad, select_y) // 4 * 4
+                    sx2 = max(dx + pad, select_x) // 2 * 2 + 1
+                    sy2 = max(dy + pad, select_y) // 4 * 4 + 3
+
+                    sx1 = max(0, sx1)
+                    sy1 = max(0, sy1)
+                    sx2 = min(dw - 1, sx2)
+                    sy2 = min(dh - 1, sy2)
+
+                    if px == sx1:
+                        if py == sy1:
                             tile += TILE_TOPLEFT
-                        elif (dy + iy) % 4 == 3:
+                        elif py > sy1 and py < sy2:
+                            tile += TILE_LEFT
+                        elif py == sy2:
+                            tile += TILE_BOTTOMLEFT
+                    elif px > sx1 and px < sx2:
+                        if py == sy1:
+                            tile += TILE_TOP
+                        elif py == sy2:
+                            tile += TILE_BOTTOM
+                    elif px == sx2:
+                        if py == sy1:
+                            tile += TILE_TOPRIGHT
+                        elif py > sy1 and py < sy2:
+                            tile += TILE_RIGHT
+                        elif py == sy2:
+                            tile += TILE_BOTTOMRIGHT
+                elif grid:
+                    px = dx + ix
+                    py = dy + iy
+                    if px % 2 == 0:
+                        if py % 4 == 0:
+                            tile += TILE_TOPLEFT
+                        elif py % 4 == 3:
                             tile += TILE_BOTTOMLEFT
                         else:
                             tile += TILE_LEFT
                     else:
-                        if (dy + iy) % 4 == 0:
+                        if py % 4 == 0:
                             tile += TILE_TOPRIGHT
-                        elif (dy + iy) % 4 == 3:
+                        elif py % 4 == 3:
                             tile += TILE_BOTTOMRIGHT
                         else:
                             tile += TILE_RIGHT
@@ -552,7 +739,8 @@ def print_status(t : blessed.Terminal, text : str, row : int = 0):
     print(t.move_xy(0, row), end='')
     print(text, end='')
  
-def prompt(t : blessed.Terminal, text : str):
+def prompt(t : blessed.Terminal,
+           text : str):
     inp = array('w')
 
     print_status(t, text)
@@ -563,13 +751,13 @@ def prompt(t : blessed.Terminal, text : str):
             inp.append(chr(key))
             print(chr(key), end='')
         else:
-            if key == t.KEY_ENTER:
-                break
-            elif key == t.KEY_ESCAPE:
-                return None
-            elif key == t.KEY_BACKSPACE:
-                # TODO: make this display correctly
-                pass
+            key = key_to_action(KEY_ACTIONS_PROMPT, key)
+            match key:
+                case KeyActions.CONFIRM:
+                    break
+                case KeyActions.CANCEL:
+                    return None
+                # TODO: make backspace work
                 #inp = inp[:-1]
                 #print(t.backspace, end='')
                 #print(t.cursor_left, end='')
@@ -621,60 +809,57 @@ def select_color_rgb(t : blessed.Terminal,
         sys.stdout.flush()
 
         _, key = inkey_numeric(t)
-        if key == t.KEY_ENTER:
-            break
-        elif key == t.KEY_ESCAPE:
-            r = orig_r
-            g = orig_g
-            b = orig_b
-            break
-        elif key == ord('a'):
-            if r > 0:
-                r -= 1
-        elif key == ord('s'):
-            if g > 0:
-                g -= 1
-        elif key == ord('d'):
-            if b > 0:
-                b -= 1
-        elif key == ord('q'):
-            if r < 255:
-                r += 1
-        elif key == ord('w'):
-            if g < 255:
-                g += 1
-        elif key == ord('e'):
-            if b < 255:
-                b += 1
-        elif key == ord('A'):
-            r -= 10
-            if r < 0:
-                r = 0
-        elif key == ord('S'):
-            g -= 10
-            if g < 0:
-                g = 0
-        elif key == ord('D'):
-            b -= 10
-            if b < 0:
-                b = 0
-        elif key == ord('Q'):
-            r += 10
-            if r > 255:
-                r = 255
-        elif key == ord('W'):
-            g += 10
-            if g > 255:
-                g = 255
-        elif key == ord('E'):
-            b += 10
-            if b > 255:
-                b = 255
-        elif allow_transparent and key == ord('t'):
-            r = -1
-            g = -1
-            b = -1
-            break
+        key = key_to_action(KEY_ACTIONS_COLOR_RGB, key)
+        match key:
+            case KeyActions.CONFIRM:
+                break
+            case KeyActions.CANCEL:
+                r = orig_r
+                g = orig_g
+                b = orig_b
+                break
+            case KeyActions.DEC_RED:
+                if r > 0:
+                    r -= 1
+            case KeyActions.DEC_GREEN:
+                if g > 0:
+                    g -= 1
+            case KeyActions.DEC_BLUE:
+                if b > 0:
+                    b -= 1
+            case KeyActions.INC_RED:
+                if r < 255:
+                    r += 1
+            case KeyActions.INC_GREEN:
+                if g < 255:
+                    g += 1
+            case KeyActions.INC_BLUE:
+                if b < 255:
+                    b += 1
+            case KeyActions.DEC_FAST_RED:
+                r -= 10
+                r = max(0, r)
+            case KeyActions.DEC_FAST_GREEN:
+                g -= 10
+                g = max(0, g)
+            case KeyActions.DEC_FAST_BLUE:
+                b -= 10
+                b = max(0, b)
+            case KeyActions.INC_FAST_RED:
+                r += 10
+                r = min(255, r)
+            case KeyActions.INC_FAST_GREEN:
+                g += 10
+                g = min(255, g)
+            case KeyActions.INC_FAST_BLUE:
+                b += 10
+                b = min(255, b)
+            case KeyActions.TRANSPARENT:
+                if allow_transparent:
+                    r = -1
+                    g = -1
+                    b = -1
+                    break
 
     clear_screen(t)
     return r, g, b
@@ -696,7 +881,7 @@ def select_color(t : blessed.Terminal,
     clear_screen(t)
 
     while True:
-        print(t.color(BLACK), end='')
+        print(t.color(DEFAULT_BG), end='')
         for cy in range(height):
             print(t.move_xy(0, cy), end='')
             for cx in range(width):
@@ -705,33 +890,36 @@ def select_color(t : blessed.Terminal,
 
         print(t.move_xy(x * 2, y), end='')
         if x == 0 and y == 0:
-            print(t.color(WHITE), end='')
+            print(t.color(DEFAULT_FG), end='')
         else:
-            print(t.color(BLACK), end='')
+            print(t.color(DEFAULT_BG), end='')
         print(t.on_color(y * width + x), end='')
         print(CURSOR, end='')
         sys.stdout.flush()
         _, key = inkey_numeric(t)
-        if key == t.KEY_ENTER:
-            c = y * width + x
-            break
-        elif key == t.KEY_ESCAPE:
-            break
-        elif key == t.KEY_LEFT:
-            if x > 0:
-                x -= 1
-        elif key == t.KEY_RIGHT:
-            if x < width - 1:
-                x += 1
-        elif key == t.KEY_UP:
-            if y > 0:
-                y -= 1
-        elif key == t.KEY_DOWN:
-            if y < height - 1:
-                y += 1
-        elif allow_transparent and key == ord('t'):
-            c = -1
-            break
+        key = key_to_action(KEY_ACTIONS_COLOR, key)
+        match key:
+            case KeyActions.CONFIRM:
+                c = y * width + x
+                break
+            case KeyActions.CANCEL:
+                break
+            case KeyActions.MOVE_LEFT:
+                if x > 0:
+                    x -= 1
+            case KeyActions.MOVE_RIGHT:
+                if x < width - 1:
+                    x += 1
+            case KeyActions.MOVE_UP:
+                if y > 0:
+                    y -= 1
+            case KeyActions.MOVE_DOWN:
+                if y < height - 1:
+                    y += 1
+            case KeyActions.TRANSPARENT:
+                if allow_transparent:
+                    c = -1
+                    break
 
     clear_screen(t)
     return c
@@ -741,7 +929,7 @@ def get_default_colors(color_mode : ColorMode):
     if color_mode == ColorMode.DIRECT:
         return 255, 255, 255, -1, -1, -1
 
-    return WHITE, 0, 0, -1, 0, 0
+    return DEFAULT_FG, 0, 0, -1, 0, 0
 
 def get_color_str(t : blessed.Terminal,
                   color_mode : ColorMode,
@@ -1013,18 +1201,18 @@ def load_file(t : blessed.Terminal,
         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
         colordata_bg_r, colordata_bg_g, colordata_bg_b
 
-def do_make_undo(x : int, y : int, w : int, h : int,
-                 dw : int, data : array,
-                 color_mode : ColorMode,
-                 colordata_fg_r : array,
-                 colordata_fg_g : array,
-                 colordata_fg_b : array,
-                 colordata_bg_r : array,
-                 colordata_bg_g : array,
-                 colordata_bg_b : array):
+def make_copy(x : int, y : int, w : int, h : int,
+              dw : int, data : array,
+              color_mode : ColorMode,
+              colordata_fg_r : array,
+              colordata_fg_g : array,
+              colordata_fg_b : array,
+              colordata_bg_r : array,
+              colordata_bg_g : array,
+              colordata_bg_b : array):
     # convert from pixels to character cells
     return DataRect(x // 2, y // 4,
-                    ((x + w) // 2) - (x // 2) + 1, ((y + h) // 4) - (y // 4) + 1,
+                    ((x + w) // 2) - (x // 2), ((y + h) // 4) - (y // 4),
                     dw // 2, data, color_mode,
                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
                     colordata_bg_r, colordata_bg_g, colordata_bg_b)
@@ -1044,9 +1232,9 @@ def make_undo(undos : list[None | DataRect],
         del undos[0]
 
     redos.clear()
-    undos.append(do_make_undo(x, y, w, h, dw, data, color_mode,
-                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                              colordata_bg_r, colordata_bg_g, colordata_bg_b))
+    undos.append(make_copy(x, y, w, h, dw, data, color_mode,
+                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                           colordata_bg_r, colordata_bg_g, colordata_bg_b))
 
 def apply_undo(undos : list[None | DataRect],
                redos : list[None | DataRect],
@@ -1069,15 +1257,15 @@ def apply_undo(undos : list[None | DataRect],
         del redos[0]
     undo = undos.pop(-1)
     if undo.whole_buffer:
-        redos.append(do_make_undo(0, 0, dw, dh, dw, data, color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b))
+        redos.append(make_copy(0, 0, dw, dh, dw, data, color_mode,
+                               colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
     else:
         # dimensions have been converted to character cells
-        redos.append(do_make_undo(undo.x * 2, undo.y * 4, undo.w * 2, len(undo.colordata_fg_r) // undo.w * 4,
-                                  dw, data, color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b))
+        redos.append(make_copy(undo.x * 2, undo.y * 4, undo.w * 2, len(undo.colordata_fg_r) // undo.w * 4,
+                               dw, data, color_mode,
+                               colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
 
     new_dw, new_dh, new_data, \
         new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
@@ -1117,15 +1305,15 @@ def apply_redo(undos : list[None | DataRect],
         del undos[0]
     redo = redos.pop(-1)
     if redo.whole_buffer:
-        undos.append(do_make_undo(0, 0, dw, dh, dw, data, color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b))
+        undos.append(make_copy(0, 0, dw, dh, dw, data, color_mode,
+                               colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
     else:
         # dimensions have been converted to character cells
-        undos.append(do_make_undo(redo.x * 2, redo.y * 4, redo.w * 2, len(redo.colordata_fg_r) // redo.w * 4,
-                                  dw, data, color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b))
+        undos.append(make_copy(redo.x * 2, redo.y * 4, redo.w * 2, len(redo.colordata_fg_r) // redo.w * 4,
+                               dw, data, color_mode,
+                               colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
 
     new_dw, new_dh, new_data, \
         new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
@@ -1164,42 +1352,9 @@ def main():
     refresh_matrix = True
     undos : list[None | DataRect] = []
     redos : list[None | DataRect] = []
-
-    t = blessed.Terminal()
-
-    KEY_ACTIONS = {
-        ord('Q'): KeyActions.QUIT,
-        t.KEY_LEFT: KeyActions.MOVE_LEFT,
-        t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
-        t.KEY_UP: KeyActions.MOVE_UP,
-        t.KEY_DOWN: KeyActions.MOVE_DOWN,
-        ord('a'): KeyActions.MOVE_LEFT,
-        ord('d'): KeyActions.MOVE_RIGHT,
-        ord('w'): KeyActions.MOVE_UP,
-        ord('s'): KeyActions.MOVE_DOWN,
-        ord(' '): KeyActions.TOGGLE,
-        ord('r'): KeyActions.RESIZE,
-        ord('g'): KeyActions.GRID,
-        ord('z'): KeyActions.ZOOMED_COLOR,
-        ord('X'): KeyActions.CLEAR,
-        t.KEY_HOME: KeyActions.HOME,
-        ord('h'): KeyActions.HOME,
-        ord('e'): KeyActions.EDGE,
-        ord('M'): KeyActions.COLOR_MODE,
-        ord('c'): KeyActions.SELECT_FG_COLOR,
-        ord('C'): KeyActions.SELECT_BG_COLOR,
-        ord('p'): KeyActions.PUT_COLOR,
-        ord('P'): KeyActions.PICK_COLOR,
-        ord('S'): KeyActions.SAVE_FILE,
-        ord('R'): KeyActions.REDRAW,
-        ord('u'): KeyActions.UNDO,
-        ord('U'): KeyActions.REDO
-    }
-
-    COLORS = {
-        False: f"{t.color(WHITE)}{t.on_color(BLACK)}",
-        True:  f"{t.color(BLACK)}{t.on_color(WHITE)}"
-    }
+    select_x : int = -1
+    select_y : int = -1
+    clipboard : None | DataRect = None
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -1242,6 +1397,7 @@ def main():
             print("𜶉𜶉", end='')
             display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
                                   x, y, width, height,
+                                  select_x, select_y,
                                   COLORS, grid, zoomed_color, color_mode, data,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
@@ -1249,13 +1405,51 @@ def main():
             sys.stdout.flush()
             _, key = inkey_numeric(t)
 
-            # convert to an action
-            try:
-                key = KEY_ACTIONS[key]
-            except KeyError:
-                key = KeyActions.NONE
-
             print(t.move_xy(0, 0), end='')
+            if select_x >= 0:
+                key = key_to_action(KEY_ACTIONS_SELECT, key)
+                match key:
+                    case KeyActions.MOVE_LEFT:
+                        x -= 1
+                    case KeyActions.MOVE_RIGHT:
+                        x += 1
+                    case KeyActions.MOVE_UP:
+                        y -= 1
+                    case KeyActions.MOVE_DOWN:
+                        y += 1
+                    case KeyActions.CANCEL:
+                        select_x = -1
+                        select_y = -1
+                        print_status(t, "Left selection mode.")
+                    case KeyActions.ZOOMED_COLOR:
+                        zoomed_color = not zoomed_color
+                        if zoomed_color:
+                            print_status(t, f"Zoomed view color toggled on.")
+                        else:
+                            print_status(t, f"Zoomed view color toggled off.")
+                    case KeyActions.COPY:
+                        # get top left (1) and bottom right (2) in character cell boundaries
+                        sx1 = min(x, select_x) // 2 * 2
+                        sy1 = min(y, select_y) // 4 * 4
+                        sx2 = max(x, select_x) // 2 * 2 + 2
+                        sy2 = max(y, select_y) // 4 * 4 + 4
+
+                        # clamp
+                        sx1 = max(0, sx1)
+                        sy1 = max(0, sy1)
+                        sx2 = min(width - 1, sx2)
+                        sy2 = min(height - 1, sy2)
+
+                        # get width, height
+                        cw = sx2 - sx1
+                        ch = sy2 - sy1
+                        clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
+                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                        print_status(t, f"Copied.")
+                continue
+
+            key = key_to_action(KEY_ACTIONS, key)
             match key:
                 case KeyActions.QUIT:
                     ans = prompt_yn(t, "Quit?")
@@ -1539,7 +1733,25 @@ def main():
                         clear_screen(t)
                         refresh_matrix = True
                         print_status(t, "Redone.")
- 
+                case KeyActions.SELECT:
+                    select_x = x
+                    select_y = y
+                    print_status(t, "Entered selection mode.")
+                case KeyActions.PASTE:
+                    if clipboard != None:
+                        w, h = clipboard.get_dims()
+                        make_undo(undos, redos,
+                                  x, y, w, h, width, data,
+                                  color_mode,
+                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                        clipboard.apply(width // 2, data,
+                                         colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                         colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                         x // 2, y // 4)
+                        refresh_matrix = True
+                        print_status(t, "Pasted.")
 
 if __name__ == '__main__':
     main()
