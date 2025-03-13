@@ -14,7 +14,7 @@ import blessed
 # TODO: Add save without color.
 # TODO: Visible selection area on the preview. (toggleable)
 # TODO: Visible box outline on the preview. (toggleable)
-# TODO: Separate cell and pixel selection modes with different functions.
+# TODO: More selection functions.
 # TODO: Allow upgrading a 16 color mode to 256 color mode or downgrading 256 color mode to 16 color mode if it would be lossless.
 # TODO: undo quirk undoing a color put on top row ( needs investigating ... )
 
@@ -56,7 +56,8 @@ class KeyActions(Enum):
     REDRAW = auto()
     UNDO = auto()
     REDO = auto()
-    SELECT = auto()
+    SELECT_TILES = auto()
+    SELECT_PIXELS = auto()
     CONFIRM = auto()
     CANCEL = auto()
     PASTE = auto()
@@ -101,16 +102,17 @@ KEY_ACTIONS = {
     ord('c'): KeyActions.SELECT_FG_COLOR,
     ord('C'): KeyActions.SELECT_BG_COLOR,
     ord('p'): KeyActions.PUT_COLOR,
-    ord('P'): KeyActions.PICK_COLOR,
+    ord('i'): KeyActions.PICK_COLOR,
     ord('S'): KeyActions.SAVE_FILE,
     ord('R'): KeyActions.REDRAW,
     ord('u'): KeyActions.UNDO,
     ord('U'): KeyActions.REDO,
-    ord('v'): KeyActions.SELECT,
-    ord('V'): KeyActions.PASTE
+    ord('v'): KeyActions.SELECT_TILES,
+    ord('V'): KeyActions.SELECT_PIXELS,
+    ord('P'): KeyActions.PASTE
 }
 
-KEY_ACTIONS_SELECT = {
+KEY_ACTIONS_SELECT_TILES = {
     t.KEY_LEFT: KeyActions.MOVE_LEFT,
     t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
     t.KEY_UP: KeyActions.MOVE_UP,
@@ -122,6 +124,19 @@ KEY_ACTIONS_SELECT = {
     t.KEY_ESCAPE: KeyActions.CANCEL,
     ord('z'): KeyActions.ZOOMED_COLOR,
     ord('c'): KeyActions.COPY
+}
+
+KEY_ACTIONS_SELECT_PIXELS = {
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('a'): KeyActions.MOVE_LEFT,
+    ord('d'): KeyActions.MOVE_RIGHT,
+    ord('w'): KeyActions.MOVE_UP,
+    ord('s'): KeyActions.MOVE_DOWN,
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    ord('z'): KeyActions.ZOOMED_COLOR,
 }
 
 KEY_ACTIONS_PROMPT = {
@@ -317,8 +332,8 @@ COLOR_PREVIEW = "𜶉𜶉"
 CURSOR = "🯧🯦"
 BLOCK = "██"
 
-TILE_CURSOR = 13
-TILE_INVERT = 26
+TILE_CURSOR = 20
+TILE_INVERT = 40
 TILE_TOPLEFT = 1
 TILE_LEFT = 2
 TILE_BOTTOMLEFT = 3
@@ -331,10 +346,17 @@ TILE_CORNER_TOPLEFT = 9
 TILE_CORNER_BOTTOMLEFT = 10
 TILE_CORNER_TOPRIGHT = 11
 TILE_CORNER_BOTTOMRIGHT = 12
-TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🮂🮂", "▂▂", "𜺨 ", "𜺣 ", " 𜺫", " 𜺠",
-         "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥", "𜴢𜴏", "𜷓𜶿", "𜴠🯦", "𜵙🯦", "🯧𜴎", "🯧𜶄",
-         "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰",
-         "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜",)
+TILE_TUBE_HORIZONTAL = 13
+TILE_TUBE_VERTICAL = 14
+TILE_TUBE_LEFT = 15
+TILE_TUBE_RIGHT = 16
+TILE_TUBE_TOP = 17
+TILE_TUBE_BOTTOM = 18
+TILE_TUBE_1 = 19
+TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "🮂🮂", "▂▂", "𜺨 ", "𜺣 ", " 𜺫", " 𜺠", "𜶮𜶮", "▌▐", "𜷂𜶮", "𜶮𜷖", "𜵊𜶘", "𜷀𜷕", "𜷂𜷖",
+         "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥", "𜴢𜴏", "𜷓𜶿", "𜴠🯦", "𜵙🯦", "🯧𜴎", "🯧𜶄", "𜷖𜷂", "𜵮𜶪", "█𜷂", "𜷖█", "𜵰𜶫", "𜷤𜷥", "██", 
+         "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰", "𜴳𜴳", "▐▌", "🯧𜴳", "𜴳🯦", "𜶖𜵈", "𜴡𜴍", "🯧🯦",
+         "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜", "🯦🯧", "𜵲𜴶", " 🯧", "🯦 ", "𜺠𜺣", "𜺫𜺨", "  ")
 def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
@@ -342,6 +364,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
                           select_x : int, select_y : int,
                           colors : dict[bool],
                           grid : bool, use_color : bool,
+                          select_pixels : bool,
                           color_mode : ColorMode,
                           data : array,
                           colordata_fg_r : array,
@@ -535,10 +558,15 @@ def display_zoomed_matrix(t : blessed.Terminal,
                         lastcolor = color
 
                     if select_x >= 0:
-                        sx1 = min(dx + pad, select_x) // 2 * 2
-                        sy1 = min(dy + pad, select_y) // 4 * 4
-                        sx2 = max(dx + pad, select_x) // 2 * 2 + 1
-                        sy2 = max(dy + pad, select_y) // 4 * 4 + 3
+                        sx1 = min(dx + pad, select_x)
+                        sy1 = min(dy + pad, select_y)
+                        sx2 = max(dx + pad, select_x)
+                        sy2 = max(dy + pad, select_y)
+                        if not select_pixels:
+                            sx1 = sx1 // 2 * 2
+                            sy1 = sy1 // 4 * 4
+                            sx2 = sx2 // 2 * 2 + 1
+                            sy2 = sy2 // 4 * 4 + 3
 
                         sx1 = max(0, sx1)
                         sy1 = max(0, sy1)
@@ -546,20 +574,42 @@ def display_zoomed_matrix(t : blessed.Terminal,
                         sy2 = min(dh - 1, sy2)
 
                         if px == sx1:
-                            if py == sy1:
-                                tile += TILE_TOPLEFT
-                            elif py > sy1 and py < sy2:
-                                tile += TILE_LEFT
-                            elif py == sy2:
-                                tile += TILE_BOTTOMLEFT
+                            if sx1 == sx2:
+                                if py == sy1:
+                                    if sy1 == sy2:
+                                        tile += TILE_TUBE_1
+                                    else:
+                                        tile += TILE_TUBE_TOP
+                                elif py > sy1 and py < sy2:
+                                    tile += TILE_TUBE_VERTICAL
+                                elif py == sy2:
+                                    tile += TILE_TUBE_BOTTOM
+                            elif sy1 == sy2 and py == sy1:
+                                tile += TILE_TUBE_LEFT
+                            else:
+                                if py == sy1:
+                                    if sy1 == sy2:
+                                        tile += TILE_TUBE_LEFT
+                                    else:
+                                        tile += TILE_TOPLEFT
+                                elif py > sy1 and py < sy2:
+                                    tile += TILE_LEFT
+                                elif py == sy2:
+                                    tile += TILE_BOTTOMLEFT
                         elif px > sx1 and px < sx2:
                             if py == sy1:
-                                tile += TILE_TOP
+                                if sy1 == sy2:
+                                    tile += TILE_TUBE_HORIZONTAL
+                                else:
+                                    tile += TILE_TOP
                             elif py == sy2:
                                 tile += TILE_BOTTOM
                         elif px == sx2:
                             if py == sy1:
-                                tile += TILE_TOPRIGHT
+                                if sy1 == sy2:
+                                    tile += TILE_TUBE_RIGHT
+                                else:
+                                    tile += TILE_TOPRIGHT
                             elif py > sy1 and py < sy2:
                                 tile += TILE_RIGHT
                             elif py == sy2:
@@ -1414,6 +1464,7 @@ def main():
     redos : list[None | DataRect] = []
     select_x : int = -1
     select_y : int = -1
+    select_pixels : bool = False
     clipboard : None | DataRect = None
 
     if t.number_of_colors == 256:
@@ -1470,7 +1521,8 @@ def main():
             display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
                                   x, y, width, height,
                                   select_x, select_y,
-                                  COLORS, grid, zoomed_color, color_mode, data,
+                                  COLORS, grid, zoomed_color,
+                                  select_pixels, color_mode, data,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
             if color_mode == ColorMode.DIRECT:
@@ -1488,46 +1540,68 @@ def main():
 
             print(t.move_xy(0, 0), end='')
             if select_x >= 0:
-                key = key_to_action(KEY_ACTIONS_SELECT, key)
-                match key:
-                    case KeyActions.MOVE_LEFT:
-                        x -= 1
-                    case KeyActions.MOVE_RIGHT:
-                        x += 1
-                    case KeyActions.MOVE_UP:
-                        y -= 1
-                    case KeyActions.MOVE_DOWN:
-                        y += 1
-                    case KeyActions.CANCEL:
-                        select_x = -1
-                        select_y = -1
-                        print_status(t, "Left selection mode.")
-                    case KeyActions.ZOOMED_COLOR:
-                        zoomed_color = not zoomed_color
-                        if zoomed_color:
-                            print_status(t, f"Zoomed view color toggled on.")
-                        else:
-                            print_status(t, f"Zoomed view color toggled off.")
-                    case KeyActions.COPY:
-                        # get top left (1) and bottom right (2)
-                        sx1 = min(x, select_x)
-                        sy1 = min(y, select_y)
-                        sx2 = max(x, select_x) + 1
-                        sy2 = max(y, select_y) + 1
+                if not select_pixels:
+                    key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
+                    match key:
+                        case KeyActions.MOVE_LEFT:
+                            x -= 1
+                        case KeyActions.MOVE_RIGHT:
+                            x += 1
+                        case KeyActions.MOVE_UP:
+                            y -= 1
+                        case KeyActions.MOVE_DOWN:
+                            y += 1
+                        case KeyActions.CANCEL:
+                            select_x = -1
+                            select_y = -1
+                            print_status(t, "Left selection mode.")
+                        case KeyActions.ZOOMED_COLOR:
+                            zoomed_color = not zoomed_color
+                            if zoomed_color:
+                                print_status(t, f"Zoomed view color toggled on.")
+                            else:
+                                print_status(t, f"Zoomed view color toggled off.")
+                        case KeyActions.COPY:
+                            # get top left (1) and bottom right (2)
+                            sx1 = min(x, select_x)
+                            sy1 = min(y, select_y)
+                            sx2 = max(x, select_x) + 1
+                            sy2 = max(y, select_y) + 1
 
-                        # clamp
-                        sx1 = max(0, sx1)
-                        sy1 = max(0, sy1)
-                        sx2 = min(width - 1, sx2)
-                        sy2 = min(height - 1, sy2)
+                            # clamp
+                            sx1 = max(0, sx1)
+                            sy1 = max(0, sy1)
+                            sx2 = min(width - 1, sx2)
+                            sy2 = min(height - 1, sy2)
 
-                        # get width, height
-                        cw = sx2 - sx1
-                        ch = sy2 - sy1
-                        clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
-                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                        print_status(t, f"Copied.")
+                            # get width, height
+                            cw = sx2 - sx1
+                            ch = sy2 - sy1
+                            clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
+                                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                            print_status(t, f"Copied.")
+                else: # pixels selection
+                    key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
+                    match key:
+                        case KeyActions.MOVE_LEFT:
+                            x -= 1
+                        case KeyActions.MOVE_RIGHT:
+                            x += 1
+                        case KeyActions.MOVE_UP:
+                            y -= 1
+                        case KeyActions.MOVE_DOWN:
+                            y += 1
+                        case KeyActions.CANCEL:
+                            select_x = -1
+                            select_y = -1
+                            print_status(t, "Left selection mode.")
+                        case KeyActions.ZOOMED_COLOR:
+                            zoomed_color = not zoomed_color
+                            if zoomed_color:
+                                print_status(t, f"Zoomed view color toggled on.")
+                            else:
+                                print_status(t, f"Zoomed view color toggled off.")
                 continue
 
             key = key_to_action(KEY_ACTIONS, key)
@@ -1814,13 +1888,22 @@ def main():
                         clear_screen(t)
                         refresh_matrix = True
                         print_status(t, "Redone.")
-                case KeyActions.SELECT:
+                case KeyActions.SELECT_TILES:
                     if x < 0 or x > width - 1 or y < 0 or y > height - 1:
                         print_status(t, "Out of range.")
                     else:
+                        select_pixels = False
                         select_x = x
                         select_y = y
-                        print_status(t, "Entered selection mode.")
+                        print_status(t, "Entered tiles selection mode.")
+                case KeyActions.SELECT_PIXELS:
+                    if x < 0 or x > width - 1 or y < 0 or y > height - 1:
+                        print_status(t, "Out of range.")
+                    else:
+                        select_pixels = True
+                        select_x = x
+                        select_y = y
+                        print_status(t, "Entered pixels selection mode.")
                 case KeyActions.PASTE:
                     if clipboard != None:
                         w, h = clipboard.get_dims()

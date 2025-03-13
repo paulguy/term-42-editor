@@ -30,16 +30,37 @@ Shift+M - change color mode (16, 256, DIRECT), clears canvas
 c - select foreground color
 Shift+C - select background color
 p - put color in 2x4 cell
-Shift+P - pick color from 2x4 cell
+i - pick color from 2x4 cell
 Shift+S - save file
 Shift+R - redraw screen
 u - undo
 Shift+U - redo
+v - enter tiles selection mode
+V - enter pixels selection mode
+P - paste selection
+
+In tiles selection mode
+Left Arrow, a - move left
+Right Arrow, d - move right
+Up Arrow, w - move up
+Down Arrow, s - move down
+c - copy selection
+z - toggle zoomed view color
+Escape - leave selection mode
+
+In pixels selection mode
+Left Arrow, a - move left
+Right Arrow, d - move right
+Up Arrow, w - move up
+Down Arrow, s - move down
+z - toggle zoomed view color
+Escape - leave selection mode
 
 In palette selection screen:
 Arrows - move around
 Enter - select
 Escape - cancel
+t - select transparent (background only)
 
 In DIRECT mode selection screen:
 q - red +1
