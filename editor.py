@@ -1319,9 +1319,9 @@ def make_copy(x : int, y : int, w : int, h : int,
               colordata_bg_b : array):
     # convert from pixels to character cells which the dimensions occupy
     cw = w // 2 + (w % 2)
-    ch = h // 4
-    if ((y + h) % 4) - (y % 4) > 0:
-        ch += 1
+    ch = ((y + h) // 4) - (y // 4) + 1
+    if (y + h) % 4 == 0:
+        ch -= 1
     return DataRect(x // 2, y // 4, cw, ch,
                     dw // 2, data, color_mode,
                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
@@ -1580,6 +1580,7 @@ def main():
                             clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                            #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
                             print_status(t, f"Copied.")
                 else: # pixels selection
                     key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
