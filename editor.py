@@ -15,8 +15,8 @@ import blessed
 # TODO: Visible selection area on the preview. (toggleable)
 # TODO: Visible box outline on the preview. (toggleable)
 # TODO: More selection functions.
-# TODO: Allow upgrading a 16 color mode to 256 color mode or downgrading 256 color mode to 16 color mode if it would be lossless.
-# TODO: undo quirk undoing a color put on top row ( needs investigating ... )
+# TODO: undo quirk undoing a color put on top row
+# TODO: another undo quirk with undoing pastes
 
 UNDO_LEVELS = 100
 DEFAULT_FILL = True
@@ -294,7 +294,7 @@ class DataRect:
 
         if not other_dest and self.whole_buffer:
             # if it's the whole thing, just return it
-            return w, h, self.data, \
+            return w, h, self.data, self.color_mode, \
                    self.colordata_fg_r, self.colordata_fg_g, self.colordata_fg_b, \
                    self.colordata_bg_r, self.colordata_bg_g, self.colordata_bg_b
         else:
@@ -326,7 +326,7 @@ class DataRect:
                     colordata_bg_b[(y + i) * dw + x:(y + i) * dw + x + w] = \
                         self.colordata_bg_b[i * self.w:i * self.w + w]
 
-        return None, None, None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None, None, None
 
 COLOR_PREVIEW = "𜶉𜶉"
 CURSOR = "🯧🯦"
@@ -654,6 +654,87 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 tile += TILE_CURSOR
             print(TILES[tile], end='')
 
+def make_cell_inverted(data : array, dx : int, dy : int, dw : int,
+                       cross_x : int, cross_y : int,
+                       left : bool, right : bool, up : bool, down : bool):
+    # slower function for drawing boxes/lines
+    cell : int = 0
+    # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
+    if bool(data[(dy * dw) + dx]):
+        if not ((cross_x == 0 and (cross_y == 0 or up)) or
+                (cross_y == 0 and left)):
+            cell += 1
+    elif (cross_x == 0 and (cross_y == 0 or up)) or \
+         (cross_y == 0 and left):
+        cell += 1
+    if bool(data[((dy + 1) * dw) + dx]):
+        if not ((cross_x == 0 and (cross_y == 1 or
+                                   (up and cross_y > 1) or
+                                   (down and cross_y == 0))) or
+                (cross_y == 1 and left)):
+            cell += 2
+    elif (cross_x == 0 and (cross_y == 1 or
+                             (up and cross_y > 1) or
+                             (down and cross_y == 0))) or \
+         (cross_y == 1 and left):
+        cell += 2
+    if bool(data[((dy + 2) * dw) + dx]):
+        if not ((cross_x == 0 and (cross_y == 2 or
+                                  (up and cross_y == 3) or
+                                  (down and cross_y < 2))) or
+                (cross_y == 2 and left)):
+            cell += 4
+    elif (cross_x == 0 and (cross_y == 2 or
+                             (up and cross_y == 3) or
+                             (down and cross_y < 2))) or \
+         (cross_y == 2 and left):
+        cell += 4
+    if bool(data[((dy + 3) * dw) + dx]):
+        if not ((cross_x == 0 and (cross_y == 3 or down) or
+                (cross_y == 3 and left)):
+            cell += 8
+    elif (cross_x == 0 and (cross_y == 3 or down) or \
+         (cross_y == 3 and left):
+        cell += 8
+    if bool(data[(dy * dw) + (dx + 1)]):
+        if not ((cross_x == 1 and (cross_y == 0 or up)) or
+                (cross_y == 0 and right)):
+            cell += 16
+    elif (cross_x == 1 and (cross_y == 0 or up)) or \
+         (cross_y == 0 and right):
+        cell += 16
+    if bool(data[((dy + 1) * dw) + (dx + 1)]):
+        if not ((cross_x == 1 and (cross_y == 1 or
+                                  (up and cross_y > 1) or
+                                  (down and cross_y == 0))) or
+                (cross_y == 1 and right)):
+            cell += 32
+    elif (cross_x == 1 and (cross_y == 1 or
+                           (up and cross_y > 1) or
+                           (down and cross_y == 0))) or \
+         (cross_y == 1 and right):
+        cell += 32
+    if bool(data[((dy + 2) * dw) + (dx + 1)]):
+        if not ((cross_x == 1 and (cross_y == 2 or
+                                  (up and cross_y == 3) or
+                                  (down and cross_y < 2))) or \
+                (cross_y == 2 and right)):
+            cell += 64
+    elif (cross_x == 1 and (cross_y == 2 or
+                           (up and cross_y == 3) or
+                           (down and cross_y < 2))) or \
+         (cross_y == 2 and right):
+        cell += 64
+    if bool(data[((dy + 3) * dw) + (dx + 1)]):
+        if not ((cross_x == 1 and (cross_y == 3 or down) or \
+                (cross_y == 3 and right)):
+            cell += 128
+    elif (cross_x == 1 and (cross_y == 3 or down) or \
+         (cross_y == 3 and right):
+        cell += 128
+
+    return cell
+ 
 def make_cell(data : array, dx : int, dy : int, dw : int):
     cell : int = 0
     # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
@@ -688,7 +769,7 @@ def display_matrix(t : blessed.Terminal,
                    colordata_bg_r : array,
                    colordata_bg_g : array,
                    colordata_bg_b : array):
-    # unlike the above, this one should never be given arguments to read out of bounds
+    # TODO: Allow to treat as a viewport
 
     # get width in cells for colordata lookup
     cw = dw // 2
@@ -803,6 +884,108 @@ def update_matrix(t : blessed.Terminal,
     print(t.move_xy(x + cx, y + cy), end='')
     cell = make_cell(data, dx, dy, dw)
     print(CHARS4[cell], end='')
+
+def pixels_to_occupied_wh(w : int, h : int, y : int):
+    # convert from pixels to character cells which the dimensions occupy
+    cw = w // 2 + (w % 2)
+    ch = ((y + h) // 4) - (y // 4) + 1
+    if (y + h) % 4 == 0:
+        ch -= 1
+
+    return cw, ch
+
+def update_matrix_rect(t : blessed.Terminal,
+                       color_mode : ColorMode,
+                       x : int, y : int,
+                       dx : int, dy : int,
+                       dw : int, data : array,
+                       colordata_fg_r : array,
+                       colordata_fg_g : array,
+                       colordata_fg_b : array,
+                       colordata_bg_r : array,
+                       colordata_bg_g : array,
+                       colordata_bg_b : array,
+                       bx : int, by : int,
+                       bw : int, bh : int,
+                       draw_box : bool):
+    dx : int = dx // 2 * 2
+    dy : int = dy // 4 * 4
+    cx : int = dx // 2
+    cy : int = dy // 4
+    cw : int = dw // 2
+
+    cbx : int = bx // 2 * 2
+    cby : int = by // 4 * 4
+    cbw, cbh = pixels_to_occupied_wh(bw, bh, by)
+    # make_cell uses pixels
+    cbw *= 2
+    cbh *= 2
+    sx1 : int = bx % 2
+    sy1 : int = by % 4
+    sx2 : int = (bx + bw) % 2
+    sy2 : int = (by + bh) % 4
+
+    cell : int = 0
+    print(t.move_xy(x + cx, y + cy), end='')
+    # top left corner
+    if draw_box:
+        cell = make_cell_inverted(data, dx + cbx, dy + cby, dw,
+                                  sx1, sy1, False, True, False, True):
+
+    else:
+        cell = make_cell(data, dx + cbx, dy + cby, dw)
+    print(CHARS4[cell], end='')
+    # top
+    if draw_box:
+        for i in range(1, cbw // 2 - 1):
+            cell = make_cell_inverted(data, dx + cbx + i, dy + cby, dw,
+                                      0, sy1, True, True, False, False):
+    else:
+        for i in range(1, cbw // 2 - 1):
+            cell = make_cell(data, dx + cbx + i, dy + cby, dw)
+        print(CHARS4[cell], end='')
+    # top right corner
+    if draw_box:
+        cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby, dw,
+                                  sx2, sy1, True, False, False, True):
+
+    else:
+        cell = make_cell(data, dx + cbx + cbw, dy + cby, dw)
+    print(CHARS4[cell], end='')
+    print(t.move_xy(x + cx - dx, y + cy + cbh - dy), end='')
+    # bottom left corner
+    if draw_box:
+        cell = make_cell_inverted(data, dx + cbx, dy + cby + cbh, dw,
+                                  sx1, sy2, False, True, True, False):
+
+    else:
+        cell = make_cell(data, dx + cbx, dy + cby + cbh, dw)
+    print(CHARS4[cell], end='')
+    # bottom
+    if draw_box:
+        for i in range(1, cbw // 2 - 1):
+            cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
+                                      0, sy2, True, True, False, False):
+    else:
+        for i in range(1, cbw // 2 - 1):
+            cell = make_cell(data, dx + cbx + i, dy + cby + cbh, dw)
+        print(CHARS4[cell], end='')
+    # bottom right corner
+    if draw_box:
+        cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby + cbh, dw,
+                                  sx2, sy2, True, False, True, False):
+
+    else:
+        cell = make_cell(data, dx + cbx + cbw, dy + cby + cbh, dw)
+    print(CHARS4[cell], end='')
+    # left
+    if draw_box:
+        for i in range(1, bh // 4 - 1):
+            print(t.move_xy(x + cx + cbx, y + cy + cbh), end='')
+            cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
+                                      0, sy2, True, True, False, False):
+
+
 
 def inkey_numeric(t : blessed.Terminal):
     key = t.inkey()
@@ -1317,11 +1500,8 @@ def make_copy(x : int, y : int, w : int, h : int,
               colordata_bg_r : array,
               colordata_bg_g : array,
               colordata_bg_b : array):
-    # convert from pixels to character cells which the dimensions occupy
-    cw = w // 2 + (w % 2)
-    ch = ((y + h) // 4) - (y // 4) + 1
-    if (y + h) % 4 == 0:
-        ch -= 1
+    cw, ch = pixels_to_occupied_wh(w, h, y)
+
     return DataRect(x // 2, y // 4, cw, ch,
                     dw // 2, data, color_mode,
                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
@@ -1358,7 +1538,7 @@ def apply_undo(undos : list[None | DataRect],
                colordata_bg_b : array):
     if len(undos) == 0:
         # just return what was given, no change
-        return dw, dh, data, \
+        return dw, dh, data, color_mode, \
                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                colordata_bg_r, colordata_bg_g, colordata_bg_b
 
@@ -1377,7 +1557,7 @@ def apply_undo(undos : list[None | DataRect],
                                colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                colordata_bg_r, colordata_bg_g, colordata_bg_b))
 
-    new_dw, new_dh, new_data, \
+    new_dw, new_dh, new_data, new_color_mode, \
         new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
         new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b = \
         undo.apply(dw // 2, data,
@@ -1385,12 +1565,12 @@ def apply_undo(undos : list[None | DataRect],
                    colordata_bg_r, colordata_bg_g, colordata_bg_b)
     if new_data is not None:
         # return the new one, convert dimensions in character cells to pixels
-        return new_dw * 2, new_dh * 4, new_data, \
+        return new_dw * 2, new_dh * 4, new_data, new_color_mode, \
                new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
                new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b
 
     # return back the originals
-    return dw, dh, data, \
+    return dw, dh, data, color_mode, \
            colordata_fg_r, colordata_fg_g, colordata_fg_b, \
            colordata_bg_r, colordata_bg_g, colordata_bg_b
 
@@ -1406,7 +1586,7 @@ def apply_redo(undos : list[None | DataRect],
                colordata_bg_b : array):
     if len(redos) == 0:
         # just return what was given, no change
-        return dw, dh, data, \
+        return dw, dh, data, color_mode, \
                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                colordata_bg_r, colordata_bg_g, colordata_bg_b
 
@@ -1425,7 +1605,7 @@ def apply_redo(undos : list[None | DataRect],
                                colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                colordata_bg_r, colordata_bg_g, colordata_bg_b))
 
-    new_dw, new_dh, new_data, \
+    new_dw, new_dh, new_data, new_color_mode, \
         new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
         new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b = \
         redo.apply(dw // 2, data,
@@ -1433,15 +1613,41 @@ def apply_redo(undos : list[None | DataRect],
                    colordata_bg_r, colordata_bg_g, colordata_bg_b)
     if new_data is not None:
         # return the new one, convert dimensions in character cells to pixels
-        return new_dw * 2, new_dh * 4, new_data, \
+        return new_dw * 2, new_dh * 4, new_data, new_color_mode, \
                new_colordata_fg_r, new_colordata_fg_g, new_colordata_fg_b, \
                new_colordata_bg_r, new_colordata_bg_g, new_colordata_bg_b
 
     # return back the originals
-    return dw, dh, data, \
+    return dw, dh, data, color_mode, \
            colordata_fg_r, colordata_fg_g, colordata_fg_b, \
            colordata_bg_r, colordata_bg_g, colordata_bg_b
 
+def get_max_color(colordata_fg : array,
+                  colordata_bg : array):
+    max_color : int = 0
+    for f, b in zip(colordata_fg, colordata_bg):
+        max_color = max(max_color, f)
+        max_color = max(max_color, b)
+
+    return max_color
+
+def can_convert(color_mode : ColorMode,
+                new_color_mode : ColorMode,
+                colordata_fg : array,
+                colordata_bg : array):
+    # can't convert to or from DIRECT as this would be lossy and
+    # quantization/dithering modes won't likely be implemented
+    # can't convert 256 colors down to 16 if more than the base
+    # 16 colors were used.
+    if color_mode == ColorMode.DIRECT or \
+       new_color_mode == ColorMode.DIRECT:
+        return "Can't convert to or from DIRECT color mode."
+    elif color_mode == ColorMode.C256 and \
+         new_color_mode == ColorMode.C16 and \
+         get_max_color(colordata_fg, colordata_bg) > 15:
+        return "Colors above 15 were used."
+
+    return None
 
 def main():
     width : int = 20
@@ -1743,43 +1949,58 @@ def main():
                         y = height - 1
                     print_status(t, f"Found nearest edge.")
                 case KeyActions.COLOR_MODE:
-                    ans = prompt_yn(t, "This will clear the image, are you sure?")
-                    if ans:
-                        ans = prompt(t, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
-                        if ans[0].lower() == 'D':
-                            if color_mode == ColorMode.DIRECT:
-                                print_status(t, "Already in DIRECT color mode.")
-                                continue
-                            else:
-                                color_mode = ColorMode.DIRECT
-                        elif ans[0] == '1':
-                            if color_mode == ColorMode.C16:
-                                print_status(t, "Already in 16 color mode.")
-                                continue
-                            else:
-                                color_mode = ColorMode.C16
-                        elif ans[0] == '2':
-                            if color_mode == ColorMode.C256:
-                                print_status(t, "Already in 256 color mode.")
-                                continue
-                            else:
-                                color_mode = ColorMode.C256
-                        else:
-                            print_status(t, "Unrecognized response.")
+                    new_color_mode = None
+                    ans = prompt(t, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
+                    if ans[0].lower() == 'd':
+                        if color_mode == ColorMode.DIRECT:
+                            print_status(t, "Already in DIRECT color mode.")
                             continue
+                        else:
+                            new_color_mode = ColorMode.DIRECT
+                    elif ans[0] == '1':
+                        if color_mode == ColorMode.C16:
+                            print_status(t, "Already in 16 color mode.")
+                            continue
+                        else:
+                            new_color_mode = ColorMode.C16
+                    elif ans[0] == '2':
+                        if color_mode == ColorMode.C256:
+                            print_status(t, "Already in 256 color mode.")
+                            continue
+                        else:
+                            new_color_mode = ColorMode.C256
+                    else:
+                        print_status(t, "Unrecognized response.")
+                        continue
+
+                    msg = can_convert(color_mode, new_color_mode, colordata_fg_r, colordata_bg_r)
+                    if msg is not None:
+                        ans = prompt_yn(t, f"{msg} OK TO CLEAR?")
+                        if not ans:
+                            print_status(t, "Mode change canceled.")
+                            continue
+
+                    make_undo(undos, redos,
+                              0, 0, width, height, width, data,
+                              color_mode,
+                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                    color_mode = new_color_mode
+                    if msg is not None:
                         data = array('i', itertools.repeat(0, width * height))
                         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                             colordata_bg_r, colordata_bg_g, colordata_bg_b = \
                             new_color_data(color_mode, width, height)
-                        fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
-                        clear_screen(t)
-                        refresh_matrix = True
-                        if color_mode == ColorMode.C16:
-                            print_status(t, "Changed to 16 color mode.")
-                        elif color_mode == ColorMode.C256:
-                            print_status(t, "Changed to 256 color mode.")
-                        else:
-                            print_status(t, "Changed to DIRECT color mode.")
+                    fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
+                    clear_screen(t)
+                    refresh_matrix = True
+                    if color_mode == ColorMode.C16:
+                        print_status(t, "Changed to 16 color mode.")
+                    elif color_mode == ColorMode.C256:
+                        print_status(t, "Changed to 256 color mode.")
+                    else:
+                        print_status(t, "Changed to DIRECT color mode.")
                 case KeyActions.SELECT_FG_COLOR:
                     if color_mode == ColorMode.DIRECT:
                         fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b, False)
@@ -1859,7 +2080,7 @@ def main():
                     refresh_matrix = True
                 case KeyActions.UNDO:
                     undos_len = len(undos)
-                    width, height, data, \
+                    width, height, data, color_mode, \
                         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                         colordata_bg_r, colordata_bg_g, colordata_bg_b = \
                         apply_undo(undos, redos,
@@ -1875,7 +2096,7 @@ def main():
                         print_status(t, "Undid.")
                 case KeyActions.REDO:
                     redos_len = len(redos)
-                    width, height, data, \
+                    width, height, data, color_mode, \
                         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                         colordata_bg_r, colordata_bg_g, colordata_bg_b = \
                         apply_redo(undos, redos,
@@ -1908,18 +2129,34 @@ def main():
                 case KeyActions.PASTE:
                     if clipboard != None:
                         w, h = clipboard.get_dims()
+                        if clipboard.color_mode != color_mode and \
+                           (clipboard.color_mode == ColorMode.DIRECT or
+                            color_mode == ColorMode.DIRECT or
+                            (clipboard.color_mode == ColorMode.C256 and
+                             color_mode == ColorMode.C16 and
+                             get_max_color(clipboard.colordata_fg_r, clipboard.colordata_bg_r) > 15)):
+                            print_status(t, "Clipboard and current color modes are incompatible.")
+                            continue
+
+                        # the width and height given by the clipboard are in character cells
+                        # so x and y need to be the top left of the character cell so the
+                        # area being undone is the correct size/position
                         make_undo(undos, redos,
-                                  x, y, w, h, width, data,
+                                  x // 2 * 2, y // 4 * 4, w * 2, h * 4, width, data,
                                   color_mode,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
+                        # apply wants dimensions in character cells
+                        # this is normally abstracted
                         clipboard.apply(width // 2, data,
-                                         colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                         colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                         x // 2, y // 4)
+                                        colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                        colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                        x // 2, y // 4)
                         refresh_matrix = True
                         print_status(t, "Pasted.")
+                    else:
+                        print_status(t, "Clipboard is empty.")
 
 if __name__ == '__main__':
     main()

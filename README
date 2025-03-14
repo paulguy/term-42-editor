@@ -36,8 +36,8 @@ Shift+R - redraw screen
 u - undo
 Shift+U - redo
 v - enter tiles selection mode
-V - enter pixels selection mode
-P - paste selection
+Shift+V - enter pixels selection mode
+Shift+P - paste selection
 
 In tiles selection mode
 Left Arrow, a - move left
