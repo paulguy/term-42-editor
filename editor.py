@@ -690,10 +690,10 @@ def make_cell_inverted(data : array, dx : int, dy : int, dw : int,
          (cross_y == 2 and left):
         cell += 4
     if bool(data[((dy + 3) * dw) + dx]):
-        if not ((cross_x == 0 and (cross_y == 3 or down) or
+        if not ((cross_x == 0 and (cross_y == 3 or down)) or
                 (cross_y == 3 and left)):
             cell += 8
-    elif (cross_x == 0 and (cross_y == 3 or down) or \
+    elif (cross_x == 0 and (cross_y == 3 or down)) or \
          (cross_y == 3 and left):
         cell += 8
     if bool(data[(dy * dw) + (dx + 1)]):
@@ -717,7 +717,7 @@ def make_cell_inverted(data : array, dx : int, dy : int, dw : int,
     if bool(data[((dy + 2) * dw) + (dx + 1)]):
         if not ((cross_x == 1 and (cross_y == 2 or
                                   (up and cross_y == 3) or
-                                  (down and cross_y < 2))) or \
+                                  (down and cross_y < 2))) or
                 (cross_y == 2 and right)):
             cell += 64
     elif (cross_x == 1 and (cross_y == 2 or
@@ -726,10 +726,10 @@ def make_cell_inverted(data : array, dx : int, dy : int, dw : int,
          (cross_y == 2 and right):
         cell += 64
     if bool(data[((dy + 3) * dw) + (dx + 1)]):
-        if not ((cross_x == 1 and (cross_y == 3 or down) or \
+        if not ((cross_x == 1 and (cross_y == 3 or down)) or
                 (cross_y == 3 and right)):
             cell += 128
-    elif (cross_x == 1 and (cross_y == 3 or down) or \
+    elif (cross_x == 1 and (cross_y == 3 or down)) or \
          (cross_y == 3 and right):
         cell += 128
 
@@ -769,8 +769,6 @@ def display_matrix(t : blessed.Terminal,
                    colordata_bg_r : array,
                    colordata_bg_g : array,
                    colordata_bg_b : array):
-    # TODO: Allow to treat as a viewport
-
     # get width in cells for colordata lookup
     cw = dw // 2
 
@@ -795,16 +793,18 @@ def display_matrix(t : blessed.Terminal,
             print(t.on_color(lastcolor_bg_r), end='')
         print(t.color(lastcolor_fg_r), end='')
 
-    for iy in range(h):
-        print(t.move_xy(x, y + iy), end='')
-        for ix in range(w):
+    # start at requested data start and clamp to wanted end or the actual data array dimensions
+    for iy in range(cy, min(cy + h, len(colordata_fg_r) // cw)):
+        # subtract range start here.  it's simpler than adding it everywhere else
+        print(t.move_xy(x, y + iy - cy), end='')
+        for ix in range(cx, min(cx + w, cw)):
             if color_mode == ColorMode.DIRECT:
-                color_fg_r = colordata_fg_r[((cy + iy) * cw) + (cx + ix)]
-                color_fg_g = colordata_fg_g[((cy + iy) * cw) + (cx + ix)]
-                color_fg_b = colordata_fg_b[((cy + iy) * cw) + (cx + ix)]
-                color_bg_r = colordata_bg_r[((cy + iy) * cw) + (cx + ix)]
-                color_bg_g = colordata_bg_g[((cy + iy) * cw) + (cx + ix)]
-                color_bg_b = colordata_bg_b[((cy + iy) * cw) + (cx + ix)]
+                color_fg_r = colordata_fg_r[iy * cw + ix]
+                color_fg_g = colordata_fg_g[iy * cw + ix]
+                color_fg_b = colordata_fg_b[iy * cw + ix]
+                color_bg_r = colordata_bg_r[iy * cw + ix]
+                color_bg_g = colordata_bg_g[iy * cw + ix]
+                color_bg_b = colordata_bg_b[iy * cw + ix]
                 if color_bg_r != lastcolor_bg_r or \
                    color_bg_g != lastcolor_bg_g or \
                    color_bg_b != lastcolor_bg_b:
@@ -827,8 +827,8 @@ def display_matrix(t : blessed.Terminal,
                     lastcolor_fg_b = color_fg_b
             else:
                 # paletted modes use the R channel for color value
-                color_fg_r = colordata_fg_r[((cy + iy) * cw) + (cx + ix)]
-                color_bg_r = colordata_bg_r[((cy + iy) * cw) + (cx + ix)]
+                color_fg_r = colordata_fg_r[iy * cw + ix]
+                color_bg_r = colordata_bg_r[iy * cw + ix]
                 if color_bg_r != lastcolor_bg_r:
                     if color_bg_r < 0:
                         print(t.normal, end='')
@@ -840,7 +840,7 @@ def display_matrix(t : blessed.Terminal,
                     print(t.color(color_fg_r), end='')
                     lastcolor_fg_r = color_fg_r
 
-            cell = make_cell(data, (cx + ix) * 2, (cy + iy) * 4, dw)
+            cell = make_cell(data, ix * 2, iy * 4, dw)
             print(CHARS4[cell], end='')
 
 def update_matrix(t : blessed.Terminal,
@@ -930,7 +930,7 @@ def update_matrix_rect(t : blessed.Terminal,
     # top left corner
     if draw_box:
         cell = make_cell_inverted(data, dx + cbx, dy + cby, dw,
-                                  sx1, sy1, False, True, False, True):
+                                  sx1, sy1, False, True, False, True)
 
     else:
         cell = make_cell(data, dx + cbx, dy + cby, dw)
@@ -939,7 +939,7 @@ def update_matrix_rect(t : blessed.Terminal,
     if draw_box:
         for i in range(1, cbw // 2 - 1):
             cell = make_cell_inverted(data, dx + cbx + i, dy + cby, dw,
-                                      0, sy1, True, True, False, False):
+                                      0, sy1, True, True, False, False)
     else:
         for i in range(1, cbw // 2 - 1):
             cell = make_cell(data, dx + cbx + i, dy + cby, dw)
@@ -947,7 +947,7 @@ def update_matrix_rect(t : blessed.Terminal,
     # top right corner
     if draw_box:
         cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby, dw,
-                                  sx2, sy1, True, False, False, True):
+                                  sx2, sy1, True, False, False, True)
 
     else:
         cell = make_cell(data, dx + cbx + cbw, dy + cby, dw)
@@ -956,7 +956,7 @@ def update_matrix_rect(t : blessed.Terminal,
     # bottom left corner
     if draw_box:
         cell = make_cell_inverted(data, dx + cbx, dy + cby + cbh, dw,
-                                  sx1, sy2, False, True, True, False):
+                                  sx1, sy2, False, True, True, False)
 
     else:
         cell = make_cell(data, dx + cbx, dy + cby + cbh, dw)
@@ -965,7 +965,7 @@ def update_matrix_rect(t : blessed.Terminal,
     if draw_box:
         for i in range(1, cbw // 2 - 1):
             cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
-                                      0, sy2, True, True, False, False):
+                                      0, sy2, True, True, False, False)
     else:
         for i in range(1, cbw // 2 - 1):
             cell = make_cell(data, dx + cbx + i, dy + cby + cbh, dw)
@@ -973,7 +973,7 @@ def update_matrix_rect(t : blessed.Terminal,
     # bottom right corner
     if draw_box:
         cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby + cbh, dw,
-                                  sx2, sy2, True, False, True, False):
+                                  sx2, sy2, True, False, True, False)
 
     else:
         cell = make_cell(data, dx + cbx + cbw, dy + cby + cbh, dw)
@@ -983,7 +983,7 @@ def update_matrix_rect(t : blessed.Terminal,
         for i in range(1, bh // 4 - 1):
             print(t.move_xy(x + cx + cbx, y + cy + cbh), end='')
             cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
-                                      0, sy2, True, True, False, False):
+                                      0, sy2, True, True, False, False)
 
 
 
