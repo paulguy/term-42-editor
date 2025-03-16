@@ -358,144 +358,6 @@ TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "�
          "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰", "𜴳𜴳", "▐▌", "🯧𜴳", "𜴳🯦", "𜶖𜵈", "𜴡𜴍", "🯧🯦",
          "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜", "🯦🯧", "𜵲𜴶", " 🯧", "🯦 ", "𜺠𜺣", "𜺫𜺨", "  ")
 
-def print_next_color(t : blessed.Terminal,
-                     px : int, py : int,
-                     dw : int, cw : int,
-                     data : array,
-                     color_mode : ColorMode,
-                     colordata_fg_r : array,
-                     colordata_fg_g : array,
-                     colordata_fg_b : array,
-                     colordata_bg_r : array,
-                     colordata_bg_g : array,
-                     colordata_bg_b : array,
-                     lastcolor_r : int,
-                     lastcolor_g : int,
-                     lastcolor_b : int,
-                     lastcolor_fg_r : int,
-                     lastcolor_fg_g : int,
-                     lastcolor_fg_b : int,
-                     lastcolor_bg_r : int,
-                     lastcolor : str = "",
-                     tile : int = 0):
-    # This is waaaaaay complicated and probably some remaining bugs
-    # also, many of the arguments and returned values are only useful for some things
-    # and badly descriptive at this point...
-    ciy : int = py // 4
-    cix : int = px // 2
-    if color_mode == ColorMode.DIRECT:
-        if data[dw * py + px]:
-            # pixel on (foreground)
-            color_r = colordata_fg_r[cw * ciy + cix]
-            color_g = colordata_fg_g[cw * ciy + cix]
-            color_b = colordata_fg_b[cw * ciy + cix]
-            color_bg_r = colordata_bg_r[cw * ciy + cix]
-            if len(lastcolor) == 0 or \
-               color_r != lastcolor_r or \
-               color_g != lastcolor_g or \
-               color_b != lastcolor_b or \
-               color_bg_r != lastcolor_bg_r:
-                if color_bg_r < 0:
-                    # backgrond is still transparent
-                    print(t.normal, end='')
-                    # set foreground color but select inverted tiles
-                    print(t.color_rgb(color_r, color_g, color_b), end='')
-                else:
-                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                    print(t.color_rgb(max(0, 255 - color_r - 64),
-                                      max(0, 255 - color_g - 64),
-                                      max(0, 255 - color_b - 64)), end='')
-                lastcolor_bg_r = color_bg_r
-                lastcolor_fg_r = color_r
-                lastcolor_fg_g = color_g
-                lastcolor_fg_b = color_b
-                lastcolor_r = color_r
-                lastcolor_g = color_g
-                lastcolor_b = color_b
-                lastcolor = "#"  # Tag with some non-empty string
-            if lastcolor_bg_r < 0:
-                tile += TILE_INVERT
-        else:
-            # pixel off (background)
-            color_r = colordata_bg_r[cw * ciy + cix]
-            color_g = colordata_bg_g[cw * ciy + cix]
-            color_b = colordata_bg_b[cw * ciy + cix]
-            color_fg_r = colordata_fg_r[cw * ciy + cix]
-            color_fg_g = colordata_fg_g[cw * ciy + cix]
-            color_fg_b = colordata_fg_b[cw * ciy + cix]
-            if len(lastcolor) == 0 or \
-               color_r != lastcolor_r or \
-               color_g != lastcolor_g or \
-               color_b != lastcolor_b or \
-               (color_r < 0 and (color_fg_r != lastcolor_fg_r or
-                                 color_fg_g != lastcolor_fg_g or
-                                 color_fg_b != lastcolor_fg_b)):
-                if color_r < 0:
-                    # transition to transparent background
-                    print(t.normal, end='')
-                    # set foreground
-                    print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
-                else:
-                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                    print(t.color_rgb(max(0, 255 - color_r - 64),
-                                      max(0, 255 - color_g - 64),
-                                      max(0, 255 - color_b - 64)), end='')
-                lastcolor_bg_r = color_r
-                lastcolor_fg_r = color_fg_r
-                lastcolor_fg_g = color_fg_g
-                lastcolor_fg_b = color_fg_b
-                lastcolor_r = color_r
-                lastcolor_g = color_g
-                lastcolor_b = color_b
-                lastcolor = "#"  # Tag with some non-empty string
-    else:
-        if data[dw * py + px]:
-            # pixel on (foreground)
-            color_r = colordata_fg_r[cw * ciy + cix]
-            color_bg_r = colordata_bg_r[cw * ciy + cix]
-            if len(lastcolor) == 0 or \
-               color_r != lastcolor_r or \
-               color_bg_r != lastcolor_bg_r:
-                if color_bg_r < 0:
-                    print(t.normal, end='')
-                    print(t.color(color_r), end='')
-                else:
-                    print(t.on_color(color_r), end='')
-                    if color_r == DEFAULT_BG:
-                        print(t.color(DEFAULT_FG), end='')
-                    else:
-                        print(t.color(DEFAULT_BG), end='')
-                lastcolor_bg_r = color_bg_r
-                lastcolor_fg_r = color_r
-                lastcolor_r = color_r
-                lastcolor = "#"  # Tag with some non-empty string
-            if lastcolor_bg_r < 0:
-                tile += TILE_INVERT
-        else:
-            # pixel off (background)
-            color_r = colordata_bg_r[cw * ciy + cix]
-            color_fg_r = colordata_fg_r[cw * ciy + cix]
-            if len(lastcolor) == 0 or \
-               color_r != lastcolor_r or \
-               (color_r < 0 and color_fg_r != lastcolor_fg_r):
-                if color_r < 0:
-                    print(t.normal, end='')
-                    print(t.color(color_fg_r), end='')
-                else:
-                    print(t.on_color(color_r), end='')
-                    if color_r == DEFAULT_BG:
-                        print(t.color(DEFAULT_FG), end='')
-                    else:
-                        print(t.color(DEFAULT_BG), end='')
-                lastcolor_bg_r = color_r
-                lastcolor_fg_r = color_fg_r
-                lastcolor_r = color_r
-                lastcolor = "#"  # Tag with some non-empty string
-
-    return lastcolor_r, lastcolor_g, lastcolor_b, \
-           lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-           lastcolor_bg_r, lastcolor, tile
-
 def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
@@ -579,15 +441,116 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 if px > -1 and px < dw and py > -1 and py < dh:
                     # set color
                     if use_color:
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor, tile = \
-                            print_next_color(t, px, py, dw, cw, data, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r,
-                                             lastcolor, tile)
+                        ciy : int = py // 4
+                        cix : int = px // 2
+                        if color_mode == ColorMode.DIRECT:
+                            if data[dw * py + px]:
+                                # pixel on (foreground)
+                                color_r = colordata_fg_r[cw * ciy + cix]
+                                color_g = colordata_fg_g[cw * ciy + cix]
+                                color_b = colordata_fg_b[cw * ciy + cix]
+                                color_bg_r = colordata_bg_r[cw * ciy + cix]
+                                if len(lastcolor) == 0 or \
+                                   color_r != lastcolor_r or \
+                                   color_g != lastcolor_g or \
+                                   color_b != lastcolor_b or \
+                                   color_bg_r != lastcolor_bg_r:
+                                    if color_bg_r < 0:
+                                        # backgrond is still transparent
+                                        print(t.normal, end='')
+                                        # set foreground color but select inverted tiles
+                                        print(t.color_rgb(color_r, color_g, color_b), end='')
+                                    else:
+                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                                        print(t.color_rgb(max(0, 255 - color_r - 64),
+                                                          max(0, 255 - color_g - 64),
+                                                          max(0, 255 - color_b - 64)), end='')
+                                    lastcolor_bg_r = color_bg_r
+                                    lastcolor_fg_r = color_r
+                                    lastcolor_fg_g = color_g
+                                    lastcolor_fg_b = color_b
+                                    lastcolor_r = color_r
+                                    lastcolor_g = color_g
+                                    lastcolor_b = color_b
+                                    lastcolor = "#"  # Tag with some non-empty string
+                                if lastcolor_bg_r < 0:
+                                    tile += TILE_INVERT
+                            else:
+                                # pixel off (background)
+                                color_r = colordata_bg_r[cw * ciy + cix]
+                                color_g = colordata_bg_g[cw * ciy + cix]
+                                color_b = colordata_bg_b[cw * ciy + cix]
+                                color_fg_r = colordata_fg_r[cw * ciy + cix]
+                                color_fg_g = colordata_fg_g[cw * ciy + cix]
+                                color_fg_b = colordata_fg_b[cw * ciy + cix]
+                                if len(lastcolor) == 0 or \
+                                   color_r != lastcolor_r or \
+                                   color_g != lastcolor_g or \
+                                   color_b != lastcolor_b or \
+                                   (color_r < 0 and (color_fg_r != lastcolor_fg_r or
+                                                     color_fg_g != lastcolor_fg_g or
+                                                     color_fg_b != lastcolor_fg_b)):
+                                    if color_r < 0:
+                                        # transition to transparent background
+                                        print(t.normal, end='')
+                                        # set foreground
+                                        print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
+                                    else:
+                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                                        print(t.color_rgb(max(0, 255 - color_r - 64),
+                                                          max(0, 255 - color_g - 64),
+                                                          max(0, 255 - color_b - 64)), end='')
+                                    lastcolor_bg_r = color_r
+                                    lastcolor_fg_r = color_fg_r
+                                    lastcolor_fg_g = color_fg_g
+                                    lastcolor_fg_b = color_fg_b
+                                    lastcolor_r = color_r
+                                    lastcolor_g = color_g
+                                    lastcolor_b = color_b
+                                    lastcolor = "#"  # Tag with some non-empty string
+                        else:
+                            if data[dw * py + px]:
+                                # pixel on (foreground)
+                                color_r = colordata_fg_r[cw * ciy + cix]
+                                color_bg_r = colordata_bg_r[cw * ciy + cix]
+                                if len(lastcolor) == 0 or \
+                                   color_r != lastcolor_r or \
+                                   color_bg_r != lastcolor_bg_r:
+                                    if color_bg_r < 0:
+                                        print(t.normal, end='')
+                                        print(t.color(color_r), end='')
+                                    else:
+                                        print(t.on_color(color_r), end='')
+                                        if color_r == DEFAULT_BG:
+                                            print(t.color(DEFAULT_FG), end='')
+                                        else:
+                                            print(t.color(DEFAULT_BG), end='')
+                                    lastcolor_bg_r = color_bg_r
+                                    lastcolor_fg_r = color_r
+                                    lastcolor_r = color_r
+                                    lastcolor = "#"  # Tag with some non-empty string
+                                if lastcolor_bg_r < 0:
+                                    tile += TILE_INVERT
+                            else:
+                                # pixel off (background)
+                                color_r = colordata_bg_r[cw * ciy + cix]
+                                color_fg_r = colordata_fg_r[cw * ciy + cix]
+                                if len(lastcolor) == 0 or \
+                                   color_r != lastcolor_r or \
+                                   (color_r < 0 and color_fg_r != lastcolor_fg_r):
+                                    if color_r < 0:
+                                        print(t.normal, end='')
+                                        print(t.color(color_fg_r), end='')
+                                    else:
+                                        print(t.on_color(color_r), end='')
+                                        if color_r == DEFAULT_BG:
+                                            print(t.color(DEFAULT_FG), end='')
+                                        else:
+                                            print(t.color(DEFAULT_BG), end='')
+                                    lastcolor_bg_r = color_r
+                                    lastcolor_fg_r = color_fg_r
+                                    lastcolor_r = color_r
+                                    lastcolor = "#"  # Tag with some non-empty string
                     else:
                         color = colors[data[dw * py + px]]
                         if color != lastcolor:
@@ -918,6 +881,16 @@ def pixels_to_occupied_wh(w : int, h : int, x : int, y : int):
         ch -= 1
 
     return cw, ch
+
+def print_next_color(t, cbx, cby, dw, cw, data, color_mode,
+                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                     lastcolor_r, lastcolor_g, lastcolor_b,
+                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r):
+    # intentionally left blank
+    return lastcolor_r, lastcolor_g, lastcolor_b, \
+           lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+           lastcolor_bg_r, None, None 
 
 def update_matrix_rect(t : blessed.Terminal,
                        color_mode : ColorMode,
