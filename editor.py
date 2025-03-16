@@ -357,6 +357,145 @@ TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "�
          "🯧🯦", "𜵰𜴏", "𜵮🯦", "𜷤𜶿", "𜴢𜶫", "🯧𜶪", "𜷓𜷥", "𜴢𜴏", "𜷓𜶿", "𜴠🯦", "𜵙🯦", "🯧𜴎", "🯧𜶄", "𜷖𜷂", "𜵮𜶪", "█𜷂", "𜷖█", "𜵰𜶫", "𜷤𜷥", "██", 
          "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰", "𜴳𜴳", "▐▌", "🯧𜴳", "𜴳🯦", "𜶖𜵈", "𜴡𜴍", "🯧🯦",
          "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜", "🯦🯧", "𜵲𜴶", " 🯧", "🯦 ", "𜺠𜺣", "𜺫𜺨", "  ")
+
+def print_next_color(t : blessed.Terminal,
+                     px : int, py : int,
+                     dw : int, cw : int,
+                     data : array,
+                     color_mode : ColorMode,
+                     colordata_fg_r : array,
+                     colordata_fg_g : array,
+                     colordata_fg_b : array,
+                     colordata_bg_r : array,
+                     colordata_bg_g : array,
+                     colordata_bg_b : array,
+                     lastcolor_r : int,
+                     lastcolor_g : int,
+                     lastcolor_b : int,
+                     lastcolor_fg_r : int,
+                     lastcolor_fg_g : int,
+                     lastcolor_fg_b : int,
+                     lastcolor_bg_r : int,
+                     lastcolor : str = "",
+                     tile : int = 0):
+    # This is waaaaaay complicated and probably some remaining bugs
+    # also, many of the arguments and returned values are only useful for some things
+    # and badly descriptive at this point...
+    ciy : int = py // 4
+    cix : int = px // 2
+    if color_mode == ColorMode.DIRECT:
+        if data[dw * py + px]:
+            # pixel on (foreground)
+            color_r = colordata_fg_r[cw * ciy + cix]
+            color_g = colordata_fg_g[cw * ciy + cix]
+            color_b = colordata_fg_b[cw * ciy + cix]
+            color_bg_r = colordata_bg_r[cw * ciy + cix]
+            if len(lastcolor) == 0 or \
+               color_r != lastcolor_r or \
+               color_g != lastcolor_g or \
+               color_b != lastcolor_b or \
+               color_bg_r != lastcolor_bg_r:
+                if color_bg_r < 0:
+                    # backgrond is still transparent
+                    print(t.normal, end='')
+                    # set foreground color but select inverted tiles
+                    print(t.color_rgb(color_r, color_g, color_b), end='')
+                else:
+                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                    print(t.color_rgb(max(0, 255 - color_r - 64),
+                                      max(0, 255 - color_g - 64),
+                                      max(0, 255 - color_b - 64)), end='')
+                lastcolor_bg_r = color_bg_r
+                lastcolor_fg_r = color_r
+                lastcolor_fg_g = color_g
+                lastcolor_fg_b = color_b
+                lastcolor_r = color_r
+                lastcolor_g = color_g
+                lastcolor_b = color_b
+                lastcolor = "#"  # Tag with some non-empty string
+            if lastcolor_bg_r < 0:
+                tile += TILE_INVERT
+        else:
+            # pixel off (background)
+            color_r = colordata_bg_r[cw * ciy + cix]
+            color_g = colordata_bg_g[cw * ciy + cix]
+            color_b = colordata_bg_b[cw * ciy + cix]
+            color_fg_r = colordata_fg_r[cw * ciy + cix]
+            color_fg_g = colordata_fg_g[cw * ciy + cix]
+            color_fg_b = colordata_fg_b[cw * ciy + cix]
+            if len(lastcolor) == 0 or \
+               color_r != lastcolor_r or \
+               color_g != lastcolor_g or \
+               color_b != lastcolor_b or \
+               (color_r < 0 and (color_fg_r != lastcolor_fg_r or
+                                 color_fg_g != lastcolor_fg_g or
+                                 color_fg_b != lastcolor_fg_b)):
+                if color_r < 0:
+                    # transition to transparent background
+                    print(t.normal, end='')
+                    # set foreground
+                    print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
+                else:
+                    print(t.on_color_rgb(color_r, color_g, color_b), end='')
+                    print(t.color_rgb(max(0, 255 - color_r - 64),
+                                      max(0, 255 - color_g - 64),
+                                      max(0, 255 - color_b - 64)), end='')
+                lastcolor_bg_r = color_r
+                lastcolor_fg_r = color_fg_r
+                lastcolor_fg_g = color_fg_g
+                lastcolor_fg_b = color_fg_b
+                lastcolor_r = color_r
+                lastcolor_g = color_g
+                lastcolor_b = color_b
+                lastcolor = "#"  # Tag with some non-empty string
+    else:
+        if data[dw * py + px]:
+            # pixel on (foreground)
+            color_r = colordata_fg_r[cw * ciy + cix]
+            color_bg_r = colordata_bg_r[cw * ciy + cix]
+            if len(lastcolor) == 0 or \
+               color_r != lastcolor_r or \
+               color_bg_r != lastcolor_bg_r:
+                if color_bg_r < 0:
+                    print(t.normal, end='')
+                    print(t.color(color_r), end='')
+                else:
+                    print(t.on_color(color_r), end='')
+                    if color_r == DEFAULT_BG:
+                        print(t.color(DEFAULT_FG), end='')
+                    else:
+                        print(t.color(DEFAULT_BG), end='')
+                lastcolor_bg_r = color_bg_r
+                lastcolor_fg_r = color_r
+                lastcolor_r = color_r
+                lastcolor = "#"  # Tag with some non-empty string
+            if lastcolor_bg_r < 0:
+                tile += TILE_INVERT
+        else:
+            # pixel off (background)
+            color_r = colordata_bg_r[cw * ciy + cix]
+            color_fg_r = colordata_fg_r[cw * ciy + cix]
+            if len(lastcolor) == 0 or \
+               color_r != lastcolor_r or \
+               (color_r < 0 and color_fg_r != lastcolor_fg_r):
+                if color_r < 0:
+                    print(t.normal, end='')
+                    print(t.color(color_fg_r), end='')
+                else:
+                    print(t.on_color(color_r), end='')
+                    if color_r == DEFAULT_BG:
+                        print(t.color(DEFAULT_FG), end='')
+                    else:
+                        print(t.color(DEFAULT_BG), end='')
+                lastcolor_bg_r = color_r
+                lastcolor_fg_r = color_fg_r
+                lastcolor_r = color_r
+                lastcolor = "#"  # Tag with some non-empty string
+
+    return lastcolor_r, lastcolor_g, lastcolor_b, \
+           lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+           lastcolor_bg_r, lastcolor, tile
+
 def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
@@ -392,6 +531,15 @@ def display_zoomed_matrix(t : blessed.Terminal,
             # if to the right print normals
             print(t.normal, end='')
             lastcolor = ""
+
+        lastcolor_r : int = -1
+        lastcolor_g : int = -1
+        lastcolor_b : int = -1
+        lastcolor_fg_r : int = -1
+        lastcolor_fg_g : int = -1
+        lastcolor_fg_b : int = -1
+        # only need R to determine transparency
+        lastcolor_bg_r : int = -1
 
         for ix in range(pad * 2 + 1):
             px = dx + ix
@@ -430,127 +578,16 @@ def display_zoomed_matrix(t : blessed.Terminal,
             if px >= -1 and px <= dw and py >= -1 and py <= dh:
                 if px > -1 and px < dw and py > -1 and py < dh:
                     # set color
-                    # This is waaaaaay complicated and probably some remaining bugs
                     if use_color:
-                        lastcolor_r : int = None
-                        lastcolor_g : int = None
-                        lastcolor_b : int = None
-                        lastcolor_fg_r = colordata_fg_r[cw * cy + cx]
-                        lastcolor_fg_g = colordata_fg_g[cw * cy + cx]
-                        lastcolor_fg_b = colordata_fg_b[cw * cy + cx]
-                        # only need R to determine transparency
-                        lastcolor_bg_r = colordata_bg_r[cw * cy + cx]
-
-                        ciy : int = py // 4
-                        cix : int = px // 2
-                        if color_mode == ColorMode.DIRECT:
-                            if data[dw * py + px]:
-                                # pixel on (foreground)
-                                color_r = colordata_fg_r[cw * ciy + cix]
-                                color_g = colordata_fg_g[cw * ciy + cix]
-                                color_b = colordata_fg_b[cw * ciy + cix]
-                                color_bg_r = colordata_bg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_g != lastcolor_g or \
-                                   color_b != lastcolor_b or \
-                                   color_bg_r != lastcolor_bg_r:
-                                    if color_bg_r < 0:
-                                        # backgrond is still transparent
-                                        print(t.normal, end='')
-                                        # set foreground color but select inverted tiles
-                                        print(t.color_rgb(color_r, color_g, color_b), end='')
-                                    else:
-                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                        print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                          max(0, 255 - color_g - 64),
-                                                          max(0, 255 - color_b - 64)), end='')
-                                    lastcolor_bg_r = color_bg_r
-                                    lastcolor_fg_r = color_r
-                                    lastcolor_fg_g = color_g
-                                    lastcolor_fg_b = color_b
-                                    lastcolor_r = color_r
-                                    lastcolor_g = color_g
-                                    lastcolor_b = color_b
-                                    lastcolor = "#"  # Tag with some non-empty string
-                                if lastcolor_bg_r < 0:
-                                    tile += TILE_INVERT
-                            else:
-                                # pixel off (background)
-                                color_r = colordata_bg_r[cw * ciy + cix]
-                                color_g = colordata_bg_g[cw * ciy + cix]
-                                color_b = colordata_bg_b[cw * ciy + cix]
-                                color_fg_r = colordata_fg_r[cw * ciy + cix]
-                                color_fg_g = colordata_fg_g[cw * ciy + cix]
-                                color_fg_b = colordata_fg_b[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_g != lastcolor_g or \
-                                   color_b != lastcolor_b or \
-                                   (color_r < 0 and (color_fg_r != lastcolor_fg_r or
-                                                     color_fg_g != lastcolor_fg_g or
-                                                     color_fg_b != lastcolor_fg_b)):
-                                    if color_r < 0:
-                                        # transition to transparent background
-                                        print(t.normal, end='')
-                                        # set foreground
-                                        print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
-                                    else:
-                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                        print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                          max(0, 255 - color_g - 64),
-                                                          max(0, 255 - color_b - 64)), end='')
-                                    lastcolor_bg_r = color_r
-                                    lastcolor_fg_r = color_fg_r
-                                    lastcolor_fg_g = color_fg_g
-                                    lastcolor_fg_b = color_fg_b
-                                    lastcolor_r = color_r
-                                    lastcolor_g = color_g
-                                    lastcolor_b = color_b
-                                    lastcolor = "#"  # Tag with some non-empty string
-                        else:
-                            if data[dw * py + px]:
-                                # pixel on (foreground)
-                                color_r = colordata_fg_r[cw * ciy + cix]
-                                color_bg_r = colordata_bg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_bg_r != lastcolor_bg_r:
-                                    if color_bg_r < 0:
-                                        print(t.normal, end='')
-                                        print(t.color(color_r), end='')
-                                    else:
-                                        print(t.on_color(color_r), end='')
-                                        if color_r == DEFAULT_BG:
-                                            print(t.color(DEFAULT_FG), end='')
-                                        else:
-                                            print(t.color(DEFAULT_BG), end='')
-                                    lastcolor_bg_r = color_bg_r
-                                    lastcolor_fg_r = color_r
-                                    lastcolor_r = color_r
-                                    lastcolor = "#"  # Tag with some non-empty string
-                                if lastcolor_bg_r < 0:
-                                    tile += TILE_INVERT
-                            else:
-                                # pixel off (background)
-                                color_r = colordata_bg_r[cw * ciy + cix]
-                                color_fg_r = colordata_fg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   (color_r < 0 and color_fg_r != lastcolor_fg_r):
-                                    if color_r < 0:
-                                        print(t.normal, end='')
-                                        print(t.color(color_fg_r), end='')
-                                    else:
-                                        print(t.on_color(color_r), end='')
-                                        if color_r == DEFAULT_BG:
-                                            print(t.color(DEFAULT_FG), end='')
-                                        else:
-                                            print(t.color(DEFAULT_BG), end='')
-                                    lastcolor_bg_r = color_r
-                                    lastcolor_fg_r = color_fg_r
-                                    lastcolor_r = color_r
-                                    lastcolor = "#"  # Tag with some non-empty string
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor, tile = \
+                            print_next_color(t, px, py, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r,
+                                             lastcolor, tile)
                     else:
                         color = colors[data[dw * py + px]]
                         if color != lastcolor:
@@ -656,81 +693,67 @@ def display_zoomed_matrix(t : blessed.Terminal,
 
 def make_cell_inverted(data : array, dx : int, dy : int, dw : int,
                        cross_x : int, cross_y : int,
-                       left : bool, right : bool, up : bool, down : bool):
+                       left : bool, right : bool, up : bool, down : bool,
+                       max_y : int = 4, max_x : int = 2):
     # slower function for drawing boxes/lines
+    # always invert cross point
+    # left, right, up, down - extend lines from cross point outward
+    # max_y - clip vertical line at Y, extend horizontal lines from this point
+    # max_x - fill in any space on the right side between the extended lines
     cell : int = 0
     # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
-    if bool(data[(dy * dw) + dx]):
-        if not ((cross_x == 0 and (cross_y == 0 or up)) or
-                (cross_y == 0 and left)):
-            cell += 1
-    elif (cross_x == 0 and (cross_y == 0 or up)) or \
-         (cross_y == 0 and left):
+    if bool(data[(dy * dw) + dx]) ^ \
+       ((cross_x == 0 and (cross_y == 0 or up)) or
+        (cross_x == 1 and left and cross_y == 0)):
         cell += 1
-    if bool(data[((dy + 1) * dw) + dx]):
-        if not ((cross_x == 0 and (cross_y == 1 or
-                                   (up and cross_y > 1) or
-                                   (down and cross_y == 0))) or
-                (cross_y == 1 and left)):
-            cell += 2
-    elif (cross_x == 0 and (cross_y == 1 or
-                             (up and cross_y > 1) or
-                             (down and cross_y == 0))) or \
-         (cross_y == 1 and left):
-        cell += 2
-    if bool(data[((dy + 2) * dw) + dx]):
-        if not ((cross_x == 0 and (cross_y == 2 or
-                                  (up and cross_y == 3) or
-                                  (down and cross_y < 2))) or
-                (cross_y == 2 and left)):
-            cell += 4
-    elif (cross_x == 0 and (cross_y == 2 or
-                             (up and cross_y == 3) or
-                             (down and cross_y < 2))) or \
-         (cross_y == 2 and left):
-        cell += 4
-    if bool(data[((dy + 3) * dw) + dx]):
-        if not ((cross_x == 0 and (cross_y == 3 or down)) or
-                (cross_y == 3 and left)):
-            cell += 8
-    elif (cross_x == 0 and (cross_y == 3 or down)) or \
-         (cross_y == 3 and left):
-        cell += 8
-    if bool(data[(dy * dw) + (dx + 1)]):
-        if not ((cross_x == 1 and (cross_y == 0 or up)) or
-                (cross_y == 0 and right)):
-            cell += 16
-    elif (cross_x == 1 and (cross_y == 0 or up)) or \
-         (cross_y == 0 and right):
-        cell += 16
-    if bool(data[((dy + 1) * dw) + (dx + 1)]):
-        if not ((cross_x == 1 and (cross_y == 1 or
-                                  (up and cross_y > 1) or
-                                  (down and cross_y == 0))) or
-                (cross_y == 1 and right)):
-            cell += 32
-    elif (cross_x == 1 and (cross_y == 1 or
+    if bool(data[((dy + 1) * dw) + dx]) ^ \
+       ((cross_x == 0 and (cross_y == 1 or
                            (up and cross_y > 1) or
-                           (down and cross_y == 0))) or \
-         (cross_y == 1 and right):
+                           (down and cross_y < 1 and max_y >= 1) or
+                           (left and cross_y < 1 and max_y == 1))) or
+        (cross_x == 1 and left and (cross_y == 1 or max_y == 1 or
+                                    (cross_y < 1 and max_y > 1 and max_y < 4 and max_x != 1)))):
+        cell += 2
+    if bool(data[((dy + 2) * dw) + dx]) ^ \
+       ((cross_x == 0 and (cross_y == 2 or
+                           (up and cross_y > 2) or
+                           (down and cross_y < 2 and max_y >= 2) or
+                           (left and cross_y < 2 and max_y == 2))) or
+        (cross_x == 1 and left and (cross_y == 2 or max_y == 2 or
+                                    (cross_y < 2 and max_y > 2 and max_y < 4 and max_x != 1)))):
+        cell += 4
+    if bool(data[((dy + 3) * dw) + dx]) ^ \
+       ((cross_x == 0 and (cross_y == 3 or
+                           (down and cross_y < 3 and max_y >= 3) or
+                           (left and cross_y < 3 and max_y == 3))) or
+        (cross_x == 1 and left and (cross_y == 3 or max_y == 3))):
+        cell += 8
+    if bool(data[(dy * dw) + (dx + 1)]) ^ \
+       ((cross_x == 1 and (cross_y == 0 or
+                           (up and cross_y > 0))) or
+        (cross_x == 0 and ((right and cross_y == 0) or
+                           (up and max_y < 4 and max_y >= 0)))):
+        cell += 16
+    if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
+       ((cross_x == 1 and (cross_y == 1 or
+                           (up and cross_y > 1) or
+                           (down and cross_y < 1 and max_y >= 1))) or
+        (cross_x == 0 and ((right and (cross_y == 1 or max_y == 1 or
+                                       (max_x == 1 and cross_y < 1 and max_y > 1 and max_y < 4))) or
+                           (up and max_y < 4 and max_y >= 1)))):
         cell += 32
-    if bool(data[((dy + 2) * dw) + (dx + 1)]):
-        if not ((cross_x == 1 and (cross_y == 2 or
-                                  (up and cross_y == 3) or
-                                  (down and cross_y < 2))) or
-                (cross_y == 2 and right)):
-            cell += 64
-    elif (cross_x == 1 and (cross_y == 2 or
-                           (up and cross_y == 3) or
-                           (down and cross_y < 2))) or \
-         (cross_y == 2 and right):
+    if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
+       ((cross_x == 1 and (cross_y == 2 or
+                           (up and cross_y > 2) or
+                           (down and cross_y < 2 and max_y >= 2))) or
+        (cross_x == 0 and ((right and (cross_y == 2 or max_y == 2 or
+                                       (max_x == 1 and cross_y < 2 and max_y > 1 and max_y < 4))) or
+                           (up and max_y < 4 and max_y >= 2)))):
         cell += 64
-    if bool(data[((dy + 3) * dw) + (dx + 1)]):
-        if not ((cross_x == 1 and (cross_y == 3 or down)) or
-                (cross_y == 3 and right)):
-            cell += 128
-    elif (cross_x == 1 and (cross_y == 3 or down)) or \
-         (cross_y == 3 and right):
+    if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
+       ((cross_x == 1 and (cross_y == 3 or
+                           (down and cross_y < 3 and max_y >= 3))) or
+        (cross_x == 0 and right and (cross_y == 3 or max_y == 3))):
         cell += 128
 
     return cell
@@ -885,9 +908,11 @@ def update_matrix(t : blessed.Terminal,
     cell = make_cell(data, dx, dy, dw)
     print(CHARS4[cell], end='')
 
-def pixels_to_occupied_wh(w : int, h : int, y : int):
+def pixels_to_occupied_wh(w : int, h : int, x : int, y : int):
     # convert from pixels to character cells which the dimensions occupy
-    cw = w // 2 + (w % 2)
+    cw = ((x + w) // 2) - (x // 2) + 1
+    if (x + w) % 2 == 0:
+        cw -= 1
     ch = ((y + h) // 4) - (y // 4) + 1
     if (y + h) % 4 == 0:
         ch -= 1
@@ -897,6 +922,7 @@ def pixels_to_occupied_wh(w : int, h : int, y : int):
 def update_matrix_rect(t : blessed.Terminal,
                        color_mode : ColorMode,
                        x : int, y : int,
+                       w : int, h : int,
                        dx : int, dy : int,
                        dw : int, data : array,
                        colordata_fg_r : array,
@@ -908,84 +934,347 @@ def update_matrix_rect(t : blessed.Terminal,
                        bx : int, by : int,
                        bw : int, bh : int,
                        draw_box : bool):
+    # get everything in terms of character cells
     dx : int = dx // 2 * 2
     dy : int = dy // 4 * 4
     cx : int = dx // 2
     cy : int = dy // 4
     cw : int = dw // 2
+    dh : int = len(data) // dw
+    ch : int = dh // 4
 
-    cbx : int = bx // 2 * 2
-    cby : int = by // 4 * 4
-    cbw, cbh = pixels_to_occupied_wh(bw, bh, by)
-    # make_cell uses pixels
-    cbw *= 2
-    cbh *= 2
     sx1 : int = bx % 2
     sy1 : int = by % 4
-    sx2 : int = (bx + bw) % 2
-    sy2 : int = (by + bh) % 4
+    sx2 : int = (bx + bw - 1) % 2
+    sy2 : int = (by + bh - 1) % 4
+
+    # get the occupied bounds of the box in character cells
+    cbx : int = bx // 2
+    cby : int = by // 4
+    cbw, cbh = pixels_to_occupied_wh(bw, bh, bx, by)
+    # clamp to data boundaries
+    if cbx < 0:
+        cbx = 0
+        sx1 = 0
+    if cby < 0:
+        cby = 0
+        sy1 = 0
+    if cbx + cbw - 1 >= cw:
+        cbw = cw - cbx
+        sx2 = 1
+    if cby + cbh - 1 >= ch:
+        cbh = ch - cby
+        sy2 = 3
+    print_status(t, f"{bx} {by} {bw} {bh} {cbx} {cby} {cbw} {cbh} {sx1} {sy1} {sx2} {sy2}")
+
+    lastcolor_r : int = -1
+    lastcolor_g : int = -1
+    lastcolor_b : int = -1
+    lastcolor_fg_r : int = -1
+    lastcolor_fg_g : int = -1
+    lastcolor_fg_b : int = -1
+    # only need R to determine transparency
+    lastcolor_bg_r : int = -1
 
     cell : int = 0
-    print(t.move_xy(x + cx, y + cy), end='')
-    # top left corner
-    if draw_box:
-        cell = make_cell_inverted(data, dx + cbx, dy + cby, dw,
-                                  sx1, sy1, False, True, False, True)
+    if cbx < cx + w and cbx + cbw - 1 >= cx:
+        # if the box isn't totally off a side
+        if cby >= cy and cby < cy + h:
+            # if the top line resides in the view
+            # top left corner
+            if cbx >= cx:
+                # if top left corner resides in visible area
+                # move to position
+                print(t.move_xy(x + cbx - cx, y + cby - cy), end='')
+                lastcolor_r, lastcolor_g, lastcolor_b, \
+                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, _, _ = \
+                    print_next_color(t, cbx * 2, cby * 4, dw, cw, data, color_mode,
+                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                     lastcolor_r, lastcolor_g, lastcolor_b,
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                if draw_box:
+                    if cbh == 1:
+                        if cbw == 1:
+                            if bw == 1:
+                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                          sx1, sy1, False, False, False, True,
+                                                          sy2, sx2)
+                            else:
+                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                          sx1, sy1, False, True, False, True,
+                                                          sy2, sx2)
+                        else:
+                            cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                      sx1, sy1, False, True, False, True,
+                                                      sy2)
+                    else:
+                        if cbw == 1:
+                            if bw == 1:
+                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                          sx1, sy1, False, False, False, True)
+                            else:
+                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                          sx1, sy1, False, True, False, True,
+                                                          3, 1)
+                        else:
+                            cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                  sx1, sy1, False, True, False, True)
+                else:
+                    cell = make_cell(data, cbx * 2, cby * 4, dw)
+                print(CHARS4[cell], end='')
+            else:
+                # otherwise, move to far left
+                print(t.move_xy(x, y + cby - cy), end='')
+            # top
+            if cbw > 2 and \
+               ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
+                (cbx + cbw - 1 < cx and cbx + cbw - 1 < cx + w)):
+                # if any of the top line resides within view
+                # and the selection is wide enough
+                # draw clamped within view
+                if draw_box:
+                    if cbh == 1:
+                        for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
+                            lastcolor_r, lastcolor_g, lastcolor_b, \
+                                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                                lastcolor_bg_r, _, _ = \
+                                print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                                                 colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                                 colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                                 lastcolor_r, lastcolor_g, lastcolor_b,
+                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                            cell = make_cell_inverted(data, i * 2, cby * 4, dw,
+                                                      0, sy1, True, True, False, False,
+                                                      sy2)
+                            print(CHARS4[cell], end='')
+                    else:
+                        for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
+                            lastcolor_r, lastcolor_g, lastcolor_b, \
+                                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                                lastcolor_bg_r, _, _ = \
+                                print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                                                 colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                                 colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                                 lastcolor_r, lastcolor_g, lastcolor_b,
+                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                            cell = make_cell_inverted(data, i * 2, cby * 4, dw,
+                                                      0, sy1, True, True, False, False)
+                            print(CHARS4[cell], end='')
+                else:
+                    for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell(data, i * 2, cby * 4, dw)
+                        print(CHARS4[cell], end='')
+            if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
+                # if top right corner resides in visible area
+                # and the selection is wide enough
+                # top right corner
+                lastcolor_r, lastcolor_g, lastcolor_b, \
+                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, _, _ = \
+                    print_next_color(t, (cbx + cbw - 1) * 2, cby * 4, dw, cw, data, color_mode,
+                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                     lastcolor_r, lastcolor_g, lastcolor_b,
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                if draw_box:
+                    if cbh == 1:
+                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
+                                                  sx2, sy1, True, False, False, True,
+                                                  sy2, sx2)
+                    else:
+                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
+                                                  sx2, sy1, True, False, False, True)
+                else:
+                    cell = make_cell(data, (cbx + cbw - 1) * 2, cby * 4, dw)
+                print(CHARS4[cell], end='')
 
-    else:
-        cell = make_cell(data, dx + cbx, dy + cby, dw)
-    print(CHARS4[cell], end='')
-    # top
-    if draw_box:
-        for i in range(1, cbw // 2 - 1):
-            cell = make_cell_inverted(data, dx + cbx + i, dy + cby, dw,
-                                      0, sy1, True, True, False, False)
-    else:
-        for i in range(1, cbw // 2 - 1):
-            cell = make_cell(data, dx + cbx + i, dy + cby, dw)
-        print(CHARS4[cell], end='')
-    # top right corner
-    if draw_box:
-        cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby, dw,
-                                  sx2, sy1, True, False, False, True)
+        if cbh > 1 and (cby + cbh - 1 >= cy and cby + cbh - 1 < cy + h):
+            # if the bottom line resides in the view
+            # bottom left corner
+            if cbx >= cx:
+                # if bottom left corner resides in visible area
+                # move to position
+                print(t.move_xy(x + cbx - cx, y + cby + cbh - 1 - cy), end='')
+                lastcolor_r, lastcolor_g, lastcolor_b, \
+                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, _, _ = \
+                    print_next_color(t, cbx * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                     lastcolor_r, lastcolor_g, lastcolor_b,
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                if draw_box:
+                    if cbw == 1:
+                        if bw == 1:
+                            cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                                                      sx1, sy2, False, False, True, False,
+                                                      4, sx2)
+                        else:
+                            cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                                                      sx1, sy2, True, True, True, False,
+                                                      sy2, sx2)
+                    else:
+                        cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                                                  sx1, sy2, False, True, True, False)
+                else:
+                    cell = make_cell(data, cbx * 2, (cby + cbh - 1) * 4, dw)
+                print(CHARS4[cell], end='')
+            else:
+                # otherwise, move to far left
+                print(t.move_xy(x, y + cby - cy), end='')
+            # bottom
+            if cbw > 2 and \
+               ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
+                (cbx + cbw - 1 < cx and cbx + cbw - 1 < cx + w)):
+                # if any of the top line resides within view
+                # and the selection is wide enough
+                # draw clamped within view
+                if draw_box:
+                    for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, i * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell_inverted(data, i * 2, (cby + cbh - 1) * 4, dw,
+                                                  0, sy2, True, True, False, False)
+                        print(CHARS4[cell], end='')
+                else:
+                    for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, i * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell(data, i * 2, (cby + cbh - 1) * 4, dw)
+                        print(CHARS4[cell], end='')
+            if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
+                # if top right corner resides in visible area
+                # and the selection is wide enough
+                # bottom right corner
+                lastcolor_r, lastcolor_g, lastcolor_b, \
+                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, _, _ = \
+                    print_next_color(t, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                     lastcolor_r, lastcolor_g, lastcolor_b,
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                if draw_box:
+                    cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw,
+                                              sx2, sy2, True, False, True, False)
+                else:
+                    cell = make_cell(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw)
+                print(CHARS4[cell], end='')
 
-    else:
-        cell = make_cell(data, dx + cbx + cbw, dy + cby, dw)
-    print(CHARS4[cell], end='')
-    print(t.move_xy(x + cx - dx, y + cy + cbh - dy), end='')
-    # bottom left corner
-    if draw_box:
-        cell = make_cell_inverted(data, dx + cbx, dy + cby + cbh, dw,
-                                  sx1, sy2, False, True, True, False)
-
-    else:
-        cell = make_cell(data, dx + cbx, dy + cby + cbh, dw)
-    print(CHARS4[cell], end='')
-    # bottom
-    if draw_box:
-        for i in range(1, cbw // 2 - 1):
-            cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
-                                      0, sy2, True, True, False, False)
-    else:
-        for i in range(1, cbw // 2 - 1):
-            cell = make_cell(data, dx + cbx + i, dy + cby + cbh, dw)
-        print(CHARS4[cell], end='')
-    # bottom right corner
-    if draw_box:
-        cell = make_cell_inverted(data, dx + cbx + cbw, dy + cby + cbh, dw,
-                                  sx2, sy2, True, False, True, False)
-
-    else:
-        cell = make_cell(data, dx + cbx + cbw, dy + cby + cbh, dw)
-    print(CHARS4[cell], end='')
-    # left
-    if draw_box:
-        for i in range(1, bh // 4 - 1):
-            print(t.move_xy(x + cx + cbx, y + cy + cbh), end='')
-            cell = make_cell_inverted(data, dx + cbx + i, dy + cby + cbh, dw,
-                                      0, sy2, True, True, False, False)
-
-
+    if cby + 1 < cy + h and cby + cbh - 1 > cy:
+        # if the lines aren't totally off top or bottom
+        if cbw == 1:
+            if cbx >= cx and cbx < cx + w:
+                if bw == 1:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + cbx - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                  sx1, 0, False, False, True, True)
+                        print(CHARS4[cell], end='')
+                else:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + cbx - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                  sx1, 0, True, True, True, True,
+                                                  3, 1)
+                        print(CHARS4[cell], end='')
+        else:
+            # left
+            if cbx >= cx and cbx < cx + w:
+                if draw_box:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + cbx - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                  sx1, 0, False, False, True, True)
+                        print(CHARS4[cell], end='')
+                else:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + cbx - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell(data, cbx * 2, i * 4, dw)
+                        print(CHARS4[cell], end='')
+            # right
+            if cbx + cbh - 1 > cx and cbx + cbh - 1 < cx + w:
+                if draw_box:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, (cbx + cbw - 1) * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
+                                                  sx2, 0, False, False, True, True)
+                        print(CHARS4[cell], end='')
+                else:
+                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                        print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
+                        lastcolor_r, lastcolor_g, lastcolor_b, \
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, _, _ = \
+                            print_next_color(t, (cbx + cbw - 1) * 2, i * 4, dw, cw, data, color_mode,
+                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                             lastcolor_r, lastcolor_g, lastcolor_b,
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                        cell = make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)
+                        print(CHARS4[cell], end='')
 
 def inkey_numeric(t : blessed.Terminal):
     key = t.inkey()
@@ -1037,7 +1326,7 @@ def prompt(t : blessed.Terminal,
 
 def prompt_yn(t : blessed.Terminal, text : str) -> bool:
     ans = prompt(t, f"{text} (y/n)")
-    if ans is None or ans[0].lower() != 'y':
+    if ans is None or len(ans) == 0 or ans[0].lower() != 'y':
         return False
 
     return True
@@ -1500,7 +1789,7 @@ def make_copy(x : int, y : int, w : int, h : int,
               colordata_bg_r : array,
               colordata_bg_g : array,
               colordata_bg_b : array):
-    cw, ch = pixels_to_occupied_wh(w, h, y)
+    cw, ch = pixels_to_occupied_wh(w, h, x, y)
 
     return DataRect(x // 2, y // 4, cw, ch,
                     dw // 2, data, color_mode,
@@ -1649,6 +1938,26 @@ def can_convert(color_mode : ColorMode,
 
     return None
 
+def get_xywh(x1 : int, y1 : int,
+             x2 : int, y2 : int,
+             width : int, height : int) -> (int, int, int, int):
+    # get top left (1) and bottom right (2)
+    sx1 : int = min(x1, x2)
+    sy1 : int = min(y1, y2)
+    sx2 : int = max(x1, x2)
+    sy2 : int = max(y1, y2)
+
+    # clamp
+    sx1 : int = max(0, sx1)
+    sy1 : int = max(0, sy1)
+    sx2 : int = min(width - 1, sx2)
+    sy2 : int = min(height - 1, sy2)
+
+    w : int = sx2 - sx1 + 1
+    h : int = sy2 - sy1 + 1
+
+    return sx1, sy1, w, h
+
 def main():
     width : int = 20
     height : int = 20
@@ -1768,27 +2077,18 @@ def main():
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
                         case KeyActions.COPY:
-                            # get top left (1) and bottom right (2)
-                            sx1 = min(x, select_x)
-                            sy1 = min(y, select_y)
-                            sx2 = max(x, select_x) + 1
-                            sy2 = max(y, select_y) + 1
+                            sx1, sy1, cw, ch = get_xywh(x, y,
+                                                        select_x, select_y,
+                                                        width, height)
 
-                            # clamp
-                            sx1 = max(0, sx1)
-                            sy1 = max(0, sy1)
-                            sx2 = min(width - 1, sx2)
-                            sy2 = min(height - 1, sy2)
-
-                            # get width, height
-                            cw = sx2 - sx1
-                            ch = sy2 - sy1
                             clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
                             #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
                             print_status(t, f"Copied.")
                 else: # pixels selection
+                    last_x = x
+                    last_y = y
                     key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                     match key:
                         case KeyActions.MOVE_LEFT:
@@ -1800,6 +2100,12 @@ def main():
                         case KeyActions.MOVE_DOWN:
                             y += 1
                         case KeyActions.CANCEL:
+                            bx, by, bw, bh = get_xywh(last_x, last_y,
+                                                      select_x, select_y,
+                                                      width, height)
+                            update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                               width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
                             select_x = -1
                             select_y = -1
                             print_status(t, "Left selection mode.")
@@ -1809,6 +2115,20 @@ def main():
                                 print_status(t, f"Zoomed view color toggled on.")
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
+                    if last_x != x or last_y != y:
+                        bx, by, bw, bh = get_xywh(last_x, last_y,
+                                                  select_x, select_y,
+                                                  width, height)
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+                        bx, by, bw, bh = get_xywh(x, y,
+                                                  select_x, select_y,
+                                                  width, height)
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+
                 continue
 
             key = key_to_action(KEY_ACTIONS, key)
@@ -2125,6 +2445,12 @@ def main():
                         select_pixels = True
                         select_x = x
                         select_y = y
+                        bx, by, bw, bh = get_xywh(x, y,
+                                                  select_x, select_y,
+                                                  width, height)
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
                         print_status(t, "Entered pixels selection mode.")
                 case KeyActions.PASTE:
                     if clipboard != None:
