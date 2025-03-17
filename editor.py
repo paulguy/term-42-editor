@@ -12,8 +12,6 @@ import blessed
 
 # TODO: Add line and fill.
 # TODO: Add save without color.
-# TODO: Visible selection area on the preview. (toggleable)
-# TODO: Visible box outline on the preview. (toggleable)
 # TODO: More selection functions.
 # TODO: undo quirk undoing a color put on top row
 # TODO: another undo quirk with undoing pastes
@@ -882,15 +880,73 @@ def pixels_to_occupied_wh(w : int, h : int, x : int, y : int):
 
     return cw, ch
 
-def print_next_color(t, cbx, cby, dw, cw, data, color_mode,
-                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                     lastcolor_r, lastcolor_g, lastcolor_b,
-                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r):
-    # intentionally left blank
-    return lastcolor_r, lastcolor_g, lastcolor_b, \
-           lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-           lastcolor_bg_r, None, None 
+def print_next_color(t, cbx : int, cby : int, cw : int, color_mode : ColorMode,
+                     colordata_fg_r : array,
+                     colordata_fg_g : array,
+                     colordata_fg_b : array,
+                     colordata_bg_r : array,
+                     colordata_bg_g : array,
+                     colordata_bg_b : array,
+                     lastcolor_fg_r : array,
+                     lastcolor_fg_g : array,
+                     lastcolor_fg_b : array,
+                     lastcolor_bg_r : array,
+                     lastcolor_bg_g : array,
+                     lastcolor_bg_b : array) -> (int, int, int, int, int, int):
+    normaled : bool = False
+    if lastcolor_fg_r is None:
+        lastcolor_fg_r = colordata_fg_r[cby * cw + cbx]
+        lastcolor_fg_g = colordata_fg_g[cby * cw + cbx]
+        lastcolor_fg_b = colordata_fg_b[cby * cw + cbx]
+        lastcolor_bg_r = colordata_bg_r[cby * cw + cbx]
+        lastcolor_bg_g = colordata_bg_g[cby * cw + cbx]
+        lastcolor_bg_b = colordata_bg_b[cby * cw + cbx]
+        if lastcolor_bg_r < 0:
+            print(t.normal, end='')
+        else:
+            if color_mode == ColorMode.DIRECT:
+                print(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_b, lastcolor_bg_g), end='')
+            else:
+                print(t.on_color(lastcolor_bg_r), end='')
+        if color_mode == ColorMode.DIRECT:
+            print(t.color_rgb(lastcolor_bg_r, lastcolor_bg_b, lastcolor_bg_g), end='')
+        else:
+            print(t.color(lastcolor_bg_r), end='')
+    else:
+        color_fg_r = colordata_fg_r[cby * cw + cbx]
+        color_fg_g = colordata_fg_g[cby * cw + cbx]
+        color_fg_b = colordata_fg_b[cby * cw + cbx]
+        color_bg_r = colordata_bg_r[cby * cw + cbx]
+        color_bg_g = colordata_bg_g[cby * cw + cbx]
+        color_bg_b = colordata_bg_b[cby * cw + cbx]
+        if color_bg_r != lastcolor_bg_r or \
+           color_bg_g != lastcolor_bg_g or \
+           color_bg_b != lastcolor_bg_b:
+            if color_bg_r < 0:
+                print(t.normal, end='')
+                normaled = True
+            else:
+                if color_mode == ColorMode.DIRECT:
+                    print(t.on_color_rgb(color_bg_r, color_bg_b, color_bg_g), end='')
+                else:
+                    print(t.on_color(color_bg_r), end='')
+            lastcolor_bg_r = color_bg_r
+            lastcolor_bg_g = color_bg_g
+            lastcolor_bg_b = color_bg_b
+        if color_fg_r != lastcolor_fg_r or \
+           color_fg_g != lastcolor_fg_g or \
+           color_fg_b != lastcolor_fg_b or \
+           normaled:
+            if color_mode == ColorMode.DIRECT:
+                print(t.color_rgb(color_fg_r, color_fg_b, color_fg_g), end='')
+            else:
+                print(t.color(color_fg_r), end='')
+            lastcolor_fg_r = color_fg_r
+            lastcolor_fg_g = color_fg_g
+            lastcolor_fg_b = color_fg_b
+
+    return lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+           lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b
 
 def update_matrix_rect(t : blessed.Terminal,
                        color_mode : ColorMode,
@@ -940,14 +996,12 @@ def update_matrix_rect(t : blessed.Terminal,
         sy2 = 3
     print_status(t, f"{bx} {by} {bw} {bh} {cbx} {cby} {cbw} {cbh} {sx1} {sy1} {sx2} {sy2}")
 
-    lastcolor_r : int = -1
-    lastcolor_g : int = -1
-    lastcolor_b : int = -1
-    lastcolor_fg_r : int = -1
-    lastcolor_fg_g : int = -1
-    lastcolor_fg_b : int = -1
-    # only need R to determine transparency
-    lastcolor_bg_r : int = -1
+    lastcolor_fg_r : int | None = None
+    lastcolor_fg_g : int | None = None
+    lastcolor_fg_b : int | None = None
+    lastcolor_bg_r : int | None = None
+    lastcolor_bg_g : int | None = None
+    lastcolor_bg_b : int | None = None
 
     cell : int = 0
     if cbx < cx + w and cbx + cbw - 1 >= cx:
@@ -959,14 +1013,13 @@ def update_matrix_rect(t : blessed.Terminal,
                 # if top left corner resides in visible area
                 # move to position
                 print(t.move_xy(x + cbx - cx, y + cby - cy), end='')
-                lastcolor_r, lastcolor_g, lastcolor_b, \
-                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, _, _ = \
-                    print_next_color(t, cbx * 2, cby * 4, dw, cw, data, color_mode,
+                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                    print_next_color(t, cbx, cby, cw, color_mode,
                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                      colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_r, lastcolor_g, lastcolor_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                 if draw_box:
                     if cbh == 1:
                         if cbw == 1:
@@ -1010,55 +1063,51 @@ def update_matrix_rect(t : blessed.Terminal,
                 if draw_box:
                     if cbh == 1:
                         for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                            lastcolor_r, lastcolor_g, lastcolor_b, \
-                                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                                lastcolor_bg_r, _, _ = \
-                                print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                                lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                                print_next_color(t, i, cby, cw, color_mode,
                                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                  colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                                 lastcolor_r, lastcolor_g, lastcolor_b,
-                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                                 lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                             cell = make_cell_inverted(data, i * 2, cby * 4, dw,
                                                       0, sy1, True, True, False, False,
                                                       sy2)
                             print(CHARS4[cell], end='')
                     else:
                         for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                            lastcolor_r, lastcolor_g, lastcolor_b, \
-                                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                                lastcolor_bg_r, _, _ = \
-                                print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                                lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                                print_next_color(t, i, cby, cw, color_mode,
                                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                  colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                                 lastcolor_r, lastcolor_g, lastcolor_b,
-                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                                 lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                             cell = make_cell_inverted(data, i * 2, cby * 4, dw,
                                                       0, sy1, True, True, False, False)
                             print(CHARS4[cell], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, i * 2, cby * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, i, cby, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell(data, i * 2, cby * 4, dw)
                         print(CHARS4[cell], end='')
             if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
                 # if top right corner resides in visible area
                 # and the selection is wide enough
                 # top right corner
-                lastcolor_r, lastcolor_g, lastcolor_b, \
-                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, _, _ = \
-                    print_next_color(t, (cbx + cbw - 1) * 2, cby * 4, dw, cw, data, color_mode,
+                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                    print_next_color(t, (cbx + cbw - 1), cby, cw, color_mode,
                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                      colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_r, lastcolor_g, lastcolor_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                 if draw_box:
                     if cbh == 1:
                         cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
@@ -1078,14 +1127,13 @@ def update_matrix_rect(t : blessed.Terminal,
                 # if bottom left corner resides in visible area
                 # move to position
                 print(t.move_xy(x + cbx - cx, y + cby + cbh - 1 - cy), end='')
-                lastcolor_r, lastcolor_g, lastcolor_b, \
-                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, _, _ = \
-                    print_next_color(t, cbx * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                    print_next_color(t, cbx, (cby + cbh - 1), cw, color_mode,
                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                      colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_r, lastcolor_g, lastcolor_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                 if draw_box:
                     if cbw == 1:
                         if bw == 1:
@@ -1114,41 +1162,38 @@ def update_matrix_rect(t : blessed.Terminal,
                 # draw clamped within view
                 if draw_box:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, i * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, i, (cby + cbh - 1), cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell_inverted(data, i * 2, (cby + cbh - 1) * 4, dw,
                                                   0, sy2, True, True, False, False)
                         print(CHARS4[cell], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, i * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, i, (cby + cbh - 1), cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell(data, i * 2, (cby + cbh - 1) * 4, dw)
                         print(CHARS4[cell], end='')
             if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
                 # if top right corner resides in visible area
                 # and the selection is wide enough
                 # bottom right corner
-                lastcolor_r, lastcolor_g, lastcolor_b, \
-                    lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, _, _ = \
-                    print_next_color(t, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw, cw, data, color_mode,
+                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                    print_next_color(t, (cbx + cbw - 1), (cby + cbh - 1), cw, color_mode,
                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                      colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_r, lastcolor_g, lastcolor_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                 if draw_box:
                     cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw,
                                               sx2, sy2, True, False, True, False)
@@ -1163,28 +1208,26 @@ def update_matrix_rect(t : blessed.Terminal,
                 if bw == 1:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, cbx, i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
                                                   sx1, 0, False, False, True, True)
                         print(CHARS4[cell], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, cbx, i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
                                                   sx1, 0, True, True, True, True,
                                                   3, 1)
@@ -1195,28 +1238,26 @@ def update_matrix_rect(t : blessed.Terminal,
                 if draw_box:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, cbx, i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
                                                   sx1, 0, False, False, True, True)
                         print(CHARS4[cell], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, cbx * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, cbx, i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell(data, cbx * 2, i * 4, dw)
                         print(CHARS4[cell], end='')
             # right
@@ -1224,28 +1265,26 @@ def update_matrix_rect(t : blessed.Terminal,
                 if draw_box:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, (cbx + cbw - 1) * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, (cbx + cbw - 1), i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
                                                   sx2, 0, False, False, True, True)
                         print(CHARS4[cell], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
-                        lastcolor_r, lastcolor_g, lastcolor_b, \
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, _, _ = \
-                            print_next_color(t, (cbx + cbw - 1) * 2, i * 4, dw, cw, data, color_mode,
+                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
+                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
+                            print_next_color(t, (cbx + cbw - 1), i, cw, color_mode,
                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                              colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_r, lastcolor_g, lastcolor_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, lastcolor_bg_r)
+                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
+                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
                         cell = make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)
                         print(CHARS4[cell], end='')
 
