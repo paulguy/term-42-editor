@@ -10,11 +10,14 @@ import copy
 
 import blessed
 
-# TODO: Add line and fill.
-# TODO: Add save without color.
+# TODO: Add line and (maybe? probably not) flood fill.
 # TODO: More selection functions.
+#         shift 1px - pixels
+
 # TODO: undo quirk undoing a color put on top row
 # TODO: another undo quirk with undoing pastes
+#   Undo quirks might be finally resolved due to finding/fixing some bugs in related functions
+#   but i'll leave them here just in case they crop up again.
 
 UNDO_LEVELS = 100
 DEFAULT_FILL = True
@@ -77,6 +80,7 @@ class KeyActions(Enum):
 
     # for selection
     COPY = auto()
+    FILL = auto()
 
 KEY_ACTIONS = {
     ord('Q'): KeyActions.QUIT,
@@ -121,7 +125,8 @@ KEY_ACTIONS_SELECT_TILES = {
     ord('s'): KeyActions.MOVE_DOWN,
     t.KEY_ESCAPE: KeyActions.CANCEL,
     ord('z'): KeyActions.ZOOMED_COLOR,
-    ord('c'): KeyActions.COPY
+    ord('c'): KeyActions.COPY,
+    ord('f'): KeyActions.FILL
 }
 
 KEY_ACTIONS_SELECT_PIXELS = {
@@ -135,6 +140,9 @@ KEY_ACTIONS_SELECT_PIXELS = {
     ord('s'): KeyActions.MOVE_DOWN,
     t.KEY_ESCAPE: KeyActions.CANCEL,
     ord('z'): KeyActions.ZOOMED_COLOR,
+    ord('f'): KeyActions.FILL,
+    ord('c'): KeyActions.CLEAR,
+    ord('v'): KeyActions.TOGGLE
 }
 
 KEY_ACTIONS_PROMPT = {
@@ -191,9 +199,15 @@ COLORS = {
 }
 
 class ColorMode(Enum):
+    NONE = auto()
     C16 = auto()
     C256 = auto()
     DIRECT = auto()
+
+class FillMode(Enum):
+    SET = auto()
+    CLEAR = auto()
+    INVERT = auto()
 
 class DataRect:
     def __init__(self,
@@ -219,20 +233,20 @@ class DataRect:
             # if it's the whole thing, just copy it
             self.data = copy.copy(data)
             self.colordata_fg_r = copy.copy(colordata_fg_r)
+            self.colordata_bg_r = copy.copy(colordata_bg_r)
             if color_mode == ColorMode.DIRECT:
                 self.colordata_fg_g = copy.copy(colordata_fg_g)
                 self.colordata_fg_b = copy.copy(colordata_fg_b)
-                self.colordata_bg_r = copy.copy(colordata_bg_r)
                 self.colordata_bg_g = copy.copy(colordata_bg_g)
                 self.colordata_bg_b = copy.copy(colordata_bg_b)
         else:
             # build up the arrays of data to store locally
             self.data = array('i', itertools.repeat(0, (w * 2) * (h * 4)))
             self.colordata_fg_r = array('i', itertools.repeat(0, w * h))
+            self.colordata_bg_r = array('i', itertools.repeat(0, w * h))
             if color_mode == ColorMode.DIRECT:
                 self.colordata_fg_g = array('i', itertools.repeat(0, w * h))
                 self.colordata_fg_b = array('i', itertools.repeat(0, w * h))
-                self.colordata_bg_r = array('i', itertools.repeat(0, w * h))
                 self.colordata_bg_g = array('i', itertools.repeat(0, w * h))
                 self.colordata_bg_b = array('i', itertools.repeat(0, w * h))
             cw = dw * 2
@@ -250,13 +264,13 @@ class DataRect:
 
                 self.colordata_fg_r[i * self.w:i * self.w + self.w] = \
                     colordata_fg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
+                self.colordata_bg_r[i * self.w:i * self.w + self.w] = \
+                    colordata_bg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
                 if color_mode == ColorMode.DIRECT:
                     self.colordata_fg_g[i * self.w:i * self.w + self.w] = \
                         colordata_fg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
                     self.colordata_fg_b[i * self.w:i * self.w + self.w] = \
                         colordata_fg_b[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
-                    self.colordata_bg_r[i * self.w:i * self.w + self.w] = \
-                        colordata_bg_r[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
                     self.colordata_bg_g[i * self.w:i * self.w + self.w] = \
                         colordata_bg_g[(self.y + i) * dw + self.x:(self.y + i) * dw + self.x + self.w]
                     self.colordata_bg_b[i * self.w:i * self.w + self.w] = \
@@ -312,13 +326,13 @@ class DataRect:
 
                 colordata_fg_r[(y + i) * dw + x:(y + i) * dw + x + w] = \
                     self.colordata_fg_r[i * self.w:i * self.w + w]
+                colordata_bg_r[(y + i) * dw + x:(y + i) * dw + x + w] = \
+                    self.colordata_bg_r[i * self.w:i * self.w + w]
                 if self.color_mode == ColorMode.DIRECT:
                     colordata_fg_g[(y + i) * dw + x:(y + i) * dw + x + w] = \
                         self.colordata_fg_g[i * self.w:i * self.w + w]
                     colordata_fg_b[(y + i) * dw + x:(y + i) * dw + x + w] = \
                         self.colordata_fg_b[i * self.w:i * self.w + w]
-                    colordata_bg_r[(y + i) * dw + x:(y + i) * dw + x + w] = \
-                        self.colordata_bg_r[i * self.w:i * self.w + w]
                     colordata_bg_g[(y + i) * dw + x:(y + i) * dw + x + w] = \
                         self.colordata_bg_g[i * self.w:i * self.w + w]
                     colordata_bg_b[(y + i) * dw + x:(y + i) * dw + x + w] = \
@@ -1336,12 +1350,25 @@ def prompt(t : blessed.Terminal,
 
     return inp.tounicode()
 
-def prompt_yn(t : blessed.Terminal, text : str) -> bool:
-    ans = prompt(t, f"{text} (y/n)")
-    if ans is None or len(ans) == 0 or ans[0].lower() != 'y':
-        return False
+def prompt_yn(t : blessed.Terminal, text : str, default : bool = False) -> bool:
+    if default:
+        ans = prompt(t, f"{text} ([Y]/n)")
+    else:
+        ans = prompt(t, f"{text} (y/[N])")
 
-    return True
+    if ans is None or len(ans) == 0:
+        return default
+
+    if default:
+       if ans[0].lower() == 'n':
+           return False
+
+       return True
+    else:
+       if ans[0].lower() == 'y':
+           return True
+
+    return False
 
 def clear_screen(t : blessed.Terminal):
     print(t.normal, end='')
@@ -1517,6 +1544,7 @@ def new_color_data(color_mode : ColorMode, width : int, height : int):
 
 def save_file(t : blessed.Terminal,
               path : pathlib.Path,
+              color : bool,
               data : array, dw : int,
               color_mode : ColorMode,
               colordata_fg_r : array,
@@ -1532,73 +1560,76 @@ def save_file(t : blessed.Terminal,
 
         for iy in range(len(data) // dw // 4):
             # print on every line, because it's normaled at the end of each line
-            if color_mode == ColorMode.DIRECT:
-                lastcolor_fg_r = colordata_fg_r[iy * cw]
-                lastcolor_fg_g = colordata_fg_g[iy * cw]
-                lastcolor_fg_b = colordata_fg_b[iy * cw]
-                lastcolor_bg_r = colordata_bg_r[iy * cw]
-                lastcolor_bg_g = colordata_bg_g[iy * cw]
-                lastcolor_bg_b = colordata_bg_b[iy * cw]
-                if lastcolor_bg_r < 0:
-                    out.write(t.normal)
+            if color:
+                if color_mode == ColorMode.DIRECT:
+                    lastcolor_fg_r = colordata_fg_r[iy * cw]
+                    lastcolor_fg_g = colordata_fg_g[iy * cw]
+                    lastcolor_fg_b = colordata_fg_b[iy * cw]
+                    lastcolor_bg_r = colordata_bg_r[iy * cw]
+                    lastcolor_bg_g = colordata_bg_g[iy * cw]
+                    lastcolor_bg_b = colordata_bg_b[iy * cw]
+                    if lastcolor_bg_r < 0:
+                        out.write(t.normal)
+                    else:
+                        out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
+                    out.write(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b))
                 else:
-                    out.write(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b))
-                out.write(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b))
-            else:
-                lastcolor_fg_r = colordata_fg_r[iy * cw]
-                lastcolor_bg_r = colordata_bg_r[iy * cw]
-                if lastcolor_bg_r < 0:
-                    out.write(t.normal)
-                else:
-                    out.write(t.on_color(lastcolor_bg_r))
-                out.write(t.color(lastcolor_fg_r))
+                    lastcolor_fg_r = colordata_fg_r[iy * cw]
+                    lastcolor_bg_r = colordata_bg_r[iy * cw]
+                    if lastcolor_bg_r < 0:
+                        out.write(t.normal)
+                    else:
+                        out.write(t.on_color(lastcolor_bg_r))
+                    out.write(t.color(lastcolor_fg_r))
 
             for ix in range(dw // 2):
-                if color_mode == ColorMode.DIRECT:
-                    color_fg_r = colordata_fg_r[iy * cw + ix]
-                    color_fg_g = colordata_fg_g[iy * cw + ix]
-                    color_fg_b = colordata_fg_b[iy * cw + ix]
-                    color_bg_r = colordata_bg_r[iy * cw + ix]
-                    color_bg_g = colordata_bg_g[iy * cw + ix]
-                    color_bg_b = colordata_bg_b[iy * cw + ix]
-                    if color_bg_r != lastcolor_bg_r or \
-                       color_bg_g != lastcolor_bg_g or \
-                       color_bg_b != lastcolor_bg_b:
-                        if color_bg_r < 0:
-                            out.write(t.normal)
-                            # fg color gets unset, so assure it'll always
-                            # think it's changed and needs to be retransmitted
-                            lastcolor_fg_r = -1
-                        else:
-                            out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
-                        lastcolor_bg_r = color_bg_r
-                        lastcolor_bg_g = color_bg_g
-                        lastcolor_bg_b = color_bg_b
-                    if color_fg_r != lastcolor_fg_r or \
-                       color_fg_g != lastcolor_fg_g or \
-                       color_fg_b != lastcolor_fg_b:
-                        out.write(t.color_rgb(color_fg_r, color_fg_g, color_fg_b))
-                        lastcolor_fg_r = color_fg_r
-                        lastcolor_fg_g = color_fg_g
-                        lastcolor_fg_b = color_fg_b
-                else:
-                    # paletted modes use the R channel for color value
-                    color_fg_r = colordata_fg_r[iy * cw + ix]
-                    color_bg_r = colordata_bg_r[iy * cw + ix]
-                    if color_bg_r != lastcolor_bg_r:
-                        if color_bg_r < 0:
-                            out.write(t.normal)
-                            lastcolor_fg_r = -1
-                        else:
-                            out.write(t.on_color(color_bg_r))
-                        lastcolor_bg_r = color_bg_r
-                    if color_fg_r != lastcolor_fg_r:
-                        out.write(t.color(color_fg_r))
-                        lastcolor_fg_r = color_fg_r
+                if color:
+                    if color_mode == ColorMode.DIRECT:
+                        color_fg_r = colordata_fg_r[iy * cw + ix]
+                        color_fg_g = colordata_fg_g[iy * cw + ix]
+                        color_fg_b = colordata_fg_b[iy * cw + ix]
+                        color_bg_r = colordata_bg_r[iy * cw + ix]
+                        color_bg_g = colordata_bg_g[iy * cw + ix]
+                        color_bg_b = colordata_bg_b[iy * cw + ix]
+                        if color_bg_r != lastcolor_bg_r or \
+                           color_bg_g != lastcolor_bg_g or \
+                           color_bg_b != lastcolor_bg_b:
+                            if color_bg_r < 0:
+                                out.write(t.normal)
+                                # fg color gets unset, so assure it'll always
+                                # think it's changed and needs to be retransmitted
+                                lastcolor_fg_r = -1
+                            else:
+                                out.write(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b))
+                            lastcolor_bg_r = color_bg_r
+                            lastcolor_bg_g = color_bg_g
+                            lastcolor_bg_b = color_bg_b
+                        if color_fg_r != lastcolor_fg_r or \
+                           color_fg_g != lastcolor_fg_g or \
+                           color_fg_b != lastcolor_fg_b:
+                            out.write(t.color_rgb(color_fg_r, color_fg_g, color_fg_b))
+                            lastcolor_fg_r = color_fg_r
+                            lastcolor_fg_g = color_fg_g
+                            lastcolor_fg_b = color_fg_b
+                    else:
+                        # paletted modes use the R channel for color value
+                        color_fg_r = colordata_fg_r[iy * cw + ix]
+                        color_bg_r = colordata_bg_r[iy * cw + ix]
+                        if color_bg_r != lastcolor_bg_r:
+                            if color_bg_r < 0:
+                                out.write(t.normal)
+                                lastcolor_fg_r = -1
+                            else:
+                                out.write(t.on_color(color_bg_r))
+                            lastcolor_bg_r = color_bg_r
+                        if color_fg_r != lastcolor_fg_r:
+                            out.write(t.color(color_fg_r))
+                            lastcolor_fg_r = color_fg_r
 
                 cell = make_cell(data, ix * 2, iy * 4, dw)
                 out.write(CHARS4[cell])
-            out.write(t.normal)
+            if color:
+                out.write(t.normal)
             out.write('\n')
 
 def load_file(t : blessed.Terminal,
@@ -1652,14 +1683,16 @@ def load_file(t : blessed.Terminal,
                 match = t._caps_compiled_any.match(line[pos:])
                 groupdict = match.groupdict()
                 if groupdict['MISMATCH'] is not None:
-                    if fg_r is None or bg_r is None:
-                        raise ValueError("Couldn't find color code!")
+                    if color_mode is None:
+                        if fg_r is None or bg_r is None:
+                            # assume an image with no color codes
+                            color_mode = ColorMode.NONE
                     if fg_g is None:
                         # make sure the arrays have sensible numerical values
-                        fg_g = 0
-                        fg_b = 0
-                        bg_g = 0
-                        bg_b = 0
+                        if color_mode == ColorMode.NONE:
+                            fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
+                        else:
+                            _, fg_g, fg_b, _, bg_g, bg_b = get_default_colors(color_mode)
 
                     colordata_fg_r_rows[-1].append(fg_r)
                     colordata_fg_g_rows[-1].append(fg_g)
@@ -1761,6 +1794,10 @@ def load_file(t : blessed.Terminal,
     cwidth = max_row_len
     width = cwidth * 2
     height = len(colordata_fg_r_rows) * 4
+
+    if color_mode == ColorMode.NONE:
+        color_mode = ColorMode.C256
+        max_color = fg_r
 
     if color_mode == ColorMode.C256 and max_color <= 15:
         color_mode = ColorMode.C16
@@ -1970,6 +2007,25 @@ def get_xywh(x1 : int, y1 : int,
 
     return sx1, sy1, w, h
 
+def fill_data(data : array, dw : int,
+              x : int, y : int,
+              w : int, h : int,
+              mode : FillMode):
+    match mode:
+        case FillMode.SET:
+            for ty in range(y, y + h):
+                for tx in range(x, x + w):
+                    data[ty * dw + tx] = 1
+        case FillMode.CLEAR:
+            for ty in range(y, y + h):
+                for tx in range(x, x + w):
+                    data[ty * dw + tx] = 0
+        case FillMode.INVERT:
+            for ty in range(y, y + h):
+                for tx in range(x, x + w):
+                    data[ty * dw + tx] = ~data[ty * dw + tx] & 0x1
+
+
 def main():
     width : int = 20
     height : int = 20
@@ -1998,10 +2054,6 @@ def main():
         max_color_mode = ColorMode.C256
     elif t.number_of_colors < 256:
         max_color_mode = ColorMode.C16
-    color_mode = max_color_mode
-    fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
-
-    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
 
     if len(sys.argv) > 1:
         width, height, color_mode, data, \
@@ -2009,6 +2061,8 @@ def main():
             colordata_bg_r, colordata_bg_g, colordata_bg_b = \
             load_file(t, max_color_mode, sys.argv[1])
     else:
+        color_mode = max_color_mode
+
         data = array('i', itertools.repeat(0, width * height))
         if DEFAULT_FILL:
             # fill with some pattern to show it's working
@@ -2018,6 +2072,10 @@ def main():
         colordata_fg_r, colordata_fg_g, colordata_fg_b, \
             colordata_bg_r, colordata_bg_g, colordata_bg_b = \
             new_color_data(color_mode, width, height)
+
+    fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
+
+    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
 
     #global logfile
     #logfile = open("log.txt", 'w')
@@ -2090,15 +2148,44 @@ def main():
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
                         case KeyActions.COPY:
-                            sx1, sy1, cw, ch = get_xywh(x, y,
-                                                        select_x, select_y,
-                                                        width, height)
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
 
-                            clipboard = make_copy(sx1, sy1, cw, ch, width, data, color_mode,
+                            clipboard = make_copy(bx, by, bw, bh, width, data, color_mode,
                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
                             #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
                             print_status(t, f"Copied.")
+                        case KeyActions.FILL:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                            bx //= 2
+                            by //= 4
+
+                            make_undo(undos, redos,
+                                      bx * 2, by * 4, bw * 2, bh * 4, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            for ty in range(by, by + bh):
+                                for tx in range(bx, bx + bw):
+                                    if color_mode == ColorMode.DIRECT:
+                                        colordata_fg_r[ty * (width // 2) + tx] = fg_r
+                                        colordata_fg_g[ty * (width // 2) + tx] = fg_g
+                                        colordata_fg_b[ty * (width // 2) + tx] = fg_b
+                                        colordata_bg_r[ty * (width // 2) + tx] = bg_r
+                                        colordata_bg_g[ty * (width // 2) + tx] = bg_g
+                                        colordata_bg_b[ty * (width // 2) + tx] = bg_b
+                                    else:
+                                        colordata_fg_r[ty * (width // 2) + tx] = fg_r
+                                        colordata_bg_r[ty * (width // 2) + tx] = bg_r
+
+                            refresh_matrix = True
+
                 else: # pixels selection
                     key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                     match key:
@@ -2118,6 +2205,49 @@ def main():
                                 print_status(t, f"Zoomed view color toggled on.")
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
+                        case KeyActions.FILL:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            fill_data(data, width, bx, by, bw, bh, FillMode.SET)
+
+                            refresh_matrix = True
+                        case KeyActions.CLEAR:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            fill_data(data, width, bx, by, bw, bh, FillMode.CLEAR)
+
+                            refresh_matrix = True
+                        case KeyActions.TOGGLE:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            fill_data(data, width, bx, by, bw, bh, FillMode.INVERT)
+
+                            refresh_matrix = True
+
                 if last_x != x or last_y != y or cancel:
                     bx, by, bw, bh = get_xywh(last_x, last_y,
                                               select_x, select_y,
@@ -2148,6 +2278,8 @@ def main():
                         select_x = -1
                         select_y = -1
                         print_status(t, "Left selection mode.")
+
+                        refresh_matrix = True
 
                 continue
 
@@ -2409,7 +2541,12 @@ def main():
                                 print_status(t, "Save canceled.")
                                 continue
 
-                        save_file(t, path, data, width, color_mode,
+                        ans = prompt_yn(t, "With color?", True)
+                        color = True
+                        if not ans:
+                            color = False
+
+                        save_file(t, path, color, data, width, color_mode,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
                         print_status(t, "File saved.")
