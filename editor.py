@@ -869,7 +869,7 @@ def update_matrix(t : blessed.Terminal,
     cell = make_cell(data, dx, dy, dw)
     print(CHARS4[cell], end='')
 
-def pixels_to_occupied_wh(w : int, h : int, x : int, y : int):
+def pixels_to_occupied_wh(x : int, y : int, w : int, h : int):
     # convert from pixels to character cells which the dimensions occupy
     cw = ((x + w) // 2) - (x // 2) + 1
     if (x + w) % 2 == 0:
@@ -909,9 +909,9 @@ def print_next_color(t, cbx : int, cby : int, cw : int, color_mode : ColorMode,
             else:
                 print(t.on_color(lastcolor_bg_r), end='')
         if color_mode == ColorMode.DIRECT:
-            print(t.color_rgb(lastcolor_bg_r, lastcolor_bg_b, lastcolor_bg_g), end='')
+            print(t.color_rgb(lastcolor_fg_r, lastcolor_fg_b, lastcolor_fg_g), end='')
         else:
-            print(t.color(lastcolor_bg_r), end='')
+            print(t.color(lastcolor_fg_r), end='')
     else:
         color_fg_r = colordata_fg_r[cby * cw + cbx]
         color_fg_g = colordata_fg_g[cby * cw + cbx]
@@ -980,7 +980,7 @@ def update_matrix_rect(t : blessed.Terminal,
     # get the occupied bounds of the box in character cells
     cbx : int = bx // 2
     cby : int = by // 4
-    cbw, cbh = pixels_to_occupied_wh(bw, bh, bx, by)
+    cbw, cbh = pixels_to_occupied_wh(bx, by, bw, bh)
     # clamp to data boundaries
     if cbx < 0:
         cbx = 0
@@ -1801,7 +1801,7 @@ def make_copy(x : int, y : int, w : int, h : int,
               colordata_bg_r : array,
               colordata_bg_g : array,
               colordata_bg_b : array):
-    cw, ch = pixels_to_occupied_wh(w, h, x, y)
+    cw, ch = pixels_to_occupied_wh(x, y, w, h)
 
     return DataRect(x // 2, y // 4, cw, ch,
                     dw // 2, data, color_mode,
@@ -2067,6 +2067,9 @@ def main():
 
             print(t.move_xy(0, 0), end='')
             if select_x >= 0:
+                last_x = x
+                last_y = y
+                cancel : bool = False
                 if not select_pixels:
                     key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
                     match key:
@@ -2079,9 +2082,7 @@ def main():
                         case KeyActions.MOVE_DOWN:
                             y += 1
                         case KeyActions.CANCEL:
-                            select_x = -1
-                            select_y = -1
-                            print_status(t, "Left selection mode.")
+                            cancel = True
                         case KeyActions.ZOOMED_COLOR:
                             zoomed_color = not zoomed_color
                             if zoomed_color:
@@ -2099,8 +2100,6 @@ def main():
                             #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
                             print_status(t, f"Copied.")
                 else: # pixels selection
-                    last_x = x
-                    last_y = y
                     key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                     match key:
                         case KeyActions.MOVE_LEFT:
@@ -2112,34 +2111,43 @@ def main():
                         case KeyActions.MOVE_DOWN:
                             y += 1
                         case KeyActions.CANCEL:
-                            bx, by, bw, bh = get_xywh(last_x, last_y,
-                                                      select_x, select_y,
-                                                      width, height)
-                            update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                               width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
-                            select_x = -1
-                            select_y = -1
-                            print_status(t, "Left selection mode.")
+                            cancel = True
                         case KeyActions.ZOOMED_COLOR:
                             zoomed_color = not zoomed_color
                             if zoomed_color:
                                 print_status(t, f"Zoomed view color toggled on.")
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
-                    if last_x != x or last_y != y:
-                        bx, by, bw, bh = get_xywh(last_x, last_y,
-                                                  select_x, select_y,
-                                                  width, height)
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+                if last_x != x or last_y != y or cancel:
+                    bx, by, bw, bh = get_xywh(last_x, last_y,
+                                              select_x, select_y,
+                                              width, height)
+                    if not select_pixels:
+                        bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                        bx = bx // 2 * 2
+                        by = by // 4 * 4
+                        bw = bw * 2
+                        bh = bh * 4
+                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+                    if not cancel:
                         bx, by, bw, bh = get_xywh(x, y,
                                                   select_x, select_y,
                                                   width, height)
+                        if not select_pixels:
+                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                            bx = bx // 2 * 2
+                            by = by // 4 * 4
+                            bw = bw * 2
+                            bh = bh * 4
                         update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+                    else:
+                        select_x = -1
+                        select_y = -1
+                        print_status(t, "Left selection mode.")
 
                 continue
 
@@ -2449,6 +2457,18 @@ def main():
                         select_pixels = False
                         select_x = x
                         select_y = y
+                        bx, by, bw, bh = get_xywh(x, y,
+                                                  select_x, select_y,
+                                                  width, height)
+                        if not select_pixels:
+                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                            bx = bx // 2 * 2
+                            by = by // 4 * 4
+                            bw = bw * 2
+                            bh = bh * 4
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
                         print_status(t, "Entered tiles selection mode.")
                 case KeyActions.SELECT_PIXELS:
                     if x < 0 or x > width - 1 or y < 0 or y > height - 1:
