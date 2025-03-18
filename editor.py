@@ -2057,18 +2057,18 @@ def draw_rect(data : array, dw : int,
                 data[ty * dw + (x + w - 1)] = 1
         case FillMode.CLEAR:
             for tx in range(x, x + w):
-                data[y * dw + x] = 0
-                data[(y + h) * dw + x] = 0
+                data[y * dw + tx] = 0
+                data[(y + h - 1) * dw + tx] = 0
             for ty in range(y + 1, y + h - 1):
                 data[ty * dw + x] = 0
-                data[ty * dw + (x + w)] = 0
+                data[ty * dw + (x + w - 1)] = 0
         case FillMode.INVERT:
             for tx in range(x, x + w):
-                data[y * dw + x] = ~data[y * dw + x] & 0x1
-                data[(y + h) * dw + x] = ~data[(y + h) * dw + x] & 0x1
+                data[y * dw + tx] = ~data[y * dw + tx] & 0x1
+                data[(y + h - 1) * dw + tx] = ~data[(y + h - 1) * dw + tx] & 0x1
             for ty in range(y + 1, y + h - 1):
-                data[y * dw + x] = ~data[y * dw + x] & 0x1
-                data[ty * dw + (x + w)] = ~data[ty * dw + (x + w)] & 0x1
+                data[ty * dw + x] = ~data[ty * dw + x] & 0x1
+                data[ty * dw + (x + w - 1)] = ~data[ty * dw + (x + w - 1)] & 0x1
 
 
 def main():
@@ -2356,6 +2356,19 @@ def main():
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
                             draw_rect(data, width, bx, by, bw, bh, FillMode.SET)
+                        case KeyActions.RECT_BG:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            draw_rect(data, width, bx, by, bw, bh, FillMode.CLEAR)
+
 
                     bx, by, bw, bh = get_xywh(x, y,
                                               select_x, select_y,
