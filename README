@@ -44,17 +44,22 @@ Left Arrow, a - move left
 Right Arrow, d - move right
 Up Arrow, w - move up
 Down Arrow, s - move down
+Escape - leave selection mode
 c - copy selection
 z - toggle zoomed view color
-Escape - leave selection mode
+f - Fill with current color
 
 In pixels selection mode
 Left Arrow, a - move left
 Right Arrow, d - move right
 Up Arrow, w - move up
 Down Arrow, s - move down
-z - toggle zoomed view color
 Escape - leave selection mode
+z - toggle zoomed view color
+f - fill rectangle with foreground
+x - clear rectangle with background
+v - invert rectangle
+r - draw rectangle outline
 
 In palette selection screen:
 Arrows - move around
@@ -82,6 +87,7 @@ t - select transparent (background only)
 At any text prompt:
 Escape - cancel operation
 Enter - submit answer
+Backspace - backspace
 
 Known Bugs/Issues:
 The status/prompt lines don't clear.
