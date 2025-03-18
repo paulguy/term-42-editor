@@ -62,6 +62,11 @@ class KeyActions(Enum):
     CONFIRM = auto()
     CANCEL = auto()
     PASTE = auto()
+    LINE = auto()
+    LINE_BG = auto()
+
+    # for prompt
+    BACKSPACE = auto()
 
     # for select_color_rgb
     INC_RED = auto()
@@ -81,6 +86,10 @@ class KeyActions(Enum):
     # for selection
     COPY = auto()
     FILL = auto()
+    RECT = auto()
+    RECT_BG = auto()
+    CIRCLE = auto()
+    CIRCLE_BG = auto()
 
 KEY_ACTIONS = {
     ord('Q'): KeyActions.QUIT,
@@ -141,13 +150,18 @@ KEY_ACTIONS_SELECT_PIXELS = {
     t.KEY_ESCAPE: KeyActions.CANCEL,
     ord('z'): KeyActions.ZOOMED_COLOR,
     ord('f'): KeyActions.FILL,
-    ord('c'): KeyActions.CLEAR,
-    ord('v'): KeyActions.TOGGLE
+    ord('x'): KeyActions.CLEAR,
+    ord('v'): KeyActions.TOGGLE,
+    ord('r'): KeyActions.RECT,
+    ord('R'): KeyActions.RECT_BG,
+    ord('c'): KeyActions.CIRCLE,
+    ord('C'): KeyActions.CIRCLE_BG
 }
 
 KEY_ACTIONS_PROMPT = {
     t.KEY_ENTER: KeyActions.CONFIRM,
-    t.KEY_ESCAPE: KeyActions.CANCEL
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    t.KEY_BACKSPACE: KeyActions.BACKSPACE
 }
 
 KEY_ACTIONS_COLOR_RGB = {
@@ -1008,7 +1022,6 @@ def update_matrix_rect(t : blessed.Terminal,
     if cby + cbh - 1 >= ch:
         cbh = ch - cby
         sy2 = 3
-    print_status(t, f"{bx} {by} {bw} {bh} {cbx} {cby} {cbw} {cbh} {sx1} {sy1} {sx2} {sy2}")
 
     lastcolor_fg_r : int | None = None
     lastcolor_fg_g : int | None = None
@@ -1313,16 +1326,24 @@ def inkey_numeric(t : blessed.Terminal):
     return True, ord(key)
 
 def print_status(t : blessed.Terminal, text : str, row : int = 0):
-    print(t.normal, end='')
     print(t.move_xy(0, row), end='')
-    print(text, end='')
+    if row == 0:
+        print(t.on_color(4), end='')
+        print(t.color(11), end='')
+    elif row == 1:
+        print(t.on_color(7), end='')
+        print(t.color(0), end='')
+    print(t.ljust(text), end='')
  
 def prompt(t : blessed.Terminal,
            text : str):
     inp = array('w')
 
     print_status(t, text)
-    print()
+    # clear second line
+    print_status(t, "", 1)
+    print(t.move_xy(0, 1), end='')
+    sys.stdout.flush()
     while True:
         is_text, key = inkey_numeric(t)
         if is_text:
@@ -1335,18 +1356,15 @@ def prompt(t : blessed.Terminal,
                     break
                 case KeyActions.CANCEL:
                     return None
-                # TODO: make backspace work
-                #inp = inp[:-1]
-                #print(t.backspace, end='')
-                #print(t.cursor_left, end='')
-                #print(t.delete_character, end='')
+                case KeyActions.BACKSPACE:
+                    if len(inp) > 0:
+                        # not ideal, but fullscreen mode seems to have limitations?
+                        inp = inp[:-1]
+                        print(t.move_xy(0, 1), end='')
+                        print_status(t, "", 1)
+                        print(t.move_xy(0, 1), end='')
+                        print(inp.tounicode(), end='')
         sys.stdout.flush()
-    # TODO: Make this work
-    print(t.move_xy(0, 0), end='')
-    print(t.delete_line, end='')
-    print(t.move_xy(0, 1), end='')
-    print(t.delete_line, end='')
-    sys.stdout.flush()
 
     return inp.tounicode()
 
@@ -2025,6 +2043,33 @@ def fill_data(data : array, dw : int,
                 for tx in range(x, x + w):
                     data[ty * dw + tx] = ~data[ty * dw + tx] & 0x1
 
+def draw_rect(data : array, dw : int,
+              x : int, y : int,
+              w : int, h : int,
+              mode : FillMode):
+    match mode:
+        case FillMode.SET:
+            for tx in range(x, x + w):
+                data[y * dw + tx] = 1
+                data[(y + h - 1) * dw + tx] = 1
+            for ty in range(y + 1, y + h - 1):
+                data[ty * dw + x] = 1
+                data[ty * dw + (x + w - 1)] = 1
+        case FillMode.CLEAR:
+            for tx in range(x, x + w):
+                data[y * dw + x] = 0
+                data[(y + h) * dw + x] = 0
+            for ty in range(y + 1, y + h - 1):
+                data[ty * dw + x] = 0
+                data[ty * dw + (x + w)] = 0
+        case FillMode.INVERT:
+            for tx in range(x, x + w):
+                data[y * dw + x] = ~data[y * dw + x] & 0x1
+                data[(y + h) * dw + x] = ~data[(y + h) * dw + x] & 0x1
+            for ty in range(y + 1, y + h - 1):
+                data[y * dw + x] = ~data[y * dw + x] & 0x1
+                data[ty * dw + (x + w)] = ~data[ty * dw + (x + w)] & 0x1
+
 
 def main():
     width : int = 20
@@ -2045,10 +2090,13 @@ def main():
     refresh_matrix = True
     undos : list[None | DataRect] = []
     redos : list[None | DataRect] = []
+    clipboard : None | DataRect = None
     select_x : int = -1
     select_y : int = -1
     select_pixels : bool = False
-    clipboard : None | DataRect = None
+    cancel : bool = False
+    last_x : int = -1
+    last_y : int = -1
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -2081,8 +2129,11 @@ def main():
     #logfile = open("log.txt", 'w')
 
     with t.cbreak(), t.fullscreen(), t.hidden_cursor():
+        print_status(t, "Ready.")
+
         while True:
             if refresh_matrix:
+                print(t.normal, end='')
                 for i in range(height // 4):
                     print(t.move_xy(PREVIEW_X - 1, 2 + i), end='')
                     print(TILES[TILE_RIGHT][1], end='')
@@ -2100,6 +2151,43 @@ def main():
                                colordata_bg_r, colordata_bg_g, colordata_bg_b)
                 refresh_matrix = False
 
+            if select_x >= 0 or cancel:
+                # light redraw after each keypress in select mode
+                if last_x >= 0:
+                    bx, by, bw, bh = get_xywh(last_x, last_y,
+                                              select_x, select_y,
+                                              width, height)
+                    if not select_pixels:
+                        bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                        bx = bx // 2 * 2
+                        by = by // 4 * 4
+                        bw = bw * 2
+                        bh = bh * 4
+                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+
+                if not cancel:
+                    bx, by, bw, bh = get_xywh(x, y,
+                                              select_x, select_y,
+                                              width, height)
+                    if not select_pixels:
+                        bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                        bx = bx // 2 * 2
+                        by = by // 4 * 4
+                        bw = bw * 2
+                        bh = bh * 4
+                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+                else:
+                    select_x = -1
+                    select_y = -1
+                    last_x = -1
+                    last_y = -1
+                    cancel = False
+                    print_status(t, "Left selection mode.")
+
             print(t.move_xy(0, 2), end='')
             print(color_str, end='')
             print("𜶉𜶉", end='')
@@ -2110,16 +2198,22 @@ def main():
                                   select_pixels, color_mode, data,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
+            disp_x : int = x
+            disp_y : int = y
+            if select_x > 0 and not select_pixels:
+                disp_x = x // 2
+                disp_y = y // 4
             if color_mode == ColorMode.DIRECT:
                 bgstr = "Transparent"
                 if bg_r >= 0:
                     bgstr = f"{bg_r} {bg_g} {bg_b}"
-                print_status(t, f"{color_mode.name} {x}, {y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
+                print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
             else:
                 bgstr = "Transparent"
                 if bg_r >= 0:
                     bgstr = f"{bg_r}"
-                print_status(t, f"{color_mode.name} {x}, {y}  {fg_r}  {bgstr}", 1)
+                print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r}  {bgstr}", 1)
+
             sys.stdout.flush()
             _, key = inkey_numeric(t)
 
@@ -2127,7 +2221,6 @@ def main():
             if select_x >= 0:
                 last_x = x
                 last_y = y
-                cancel : bool = False
                 if not select_pixels:
                     key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
                     match key:
@@ -2185,7 +2278,11 @@ def main():
                                         colordata_bg_r[ty * (width // 2) + tx] = bg_r
 
                             refresh_matrix = True
-
+                    bx, by, bw, bh = get_xywh(x, y,
+                                              select_x, select_y,
+                                              width, height)
+                    bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                    print_status(t, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
                 else: # pixels selection
                     key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                     match key:
@@ -2247,39 +2344,23 @@ def main():
                             fill_data(data, width, bx, by, bw, bh, FillMode.INVERT)
 
                             refresh_matrix = True
+                        case KeyActions.RECT:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
 
-                if last_x != x or last_y != y or cancel:
-                    bx, by, bw, bh = get_xywh(last_x, last_y,
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            draw_rect(data, width, bx, by, bw, bh, FillMode.SET)
+
+                    bx, by, bw, bh = get_xywh(x, y,
                                               select_x, select_y,
                                               width, height)
-                    if not select_pixels:
-                        bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                        bx = bx // 2 * 2
-                        by = by // 4 * 4
-                        bw = bw * 2
-                        bh = bh * 4
-                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
-                    if not cancel:
-                        bx, by, bw, bh = get_xywh(x, y,
-                                                  select_x, select_y,
-                                                  width, height)
-                        if not select_pixels:
-                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                            bx = bx // 2 * 2
-                            by = by // 4 * 4
-                            bw = bw * 2
-                            bh = bh * 4
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
-                    else:
-                        select_x = -1
-                        select_y = -1
-                        print_status(t, "Left selection mode.")
-
-                        refresh_matrix = True
+                    print_status(t, f"Selecting pixels {select_x} {select_y} S: {bw} {bh}")
 
                 continue
 
@@ -2287,7 +2368,9 @@ def main():
             match key:
                 case KeyActions.QUIT:
                     ans = prompt_yn(t, "Quit?")
-                    if ans:
+                    if not ans:
+                        print_status(t, "Returned.")
+                    else:
                         break
                 case KeyActions.MOVE_LEFT:
                     x -= 1
@@ -2594,18 +2677,6 @@ def main():
                         select_pixels = False
                         select_x = x
                         select_y = y
-                        bx, by, bw, bh = get_xywh(x, y,
-                                                  select_x, select_y,
-                                                  width, height)
-                        if not select_pixels:
-                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                            bx = bx // 2 * 2
-                            by = by // 4 * 4
-                            bw = bw * 2
-                            bh = bh * 4
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
                         print_status(t, "Entered tiles selection mode.")
                 case KeyActions.SELECT_PIXELS:
                     if x < 0 or x > width - 1 or y < 0 or y > height - 1:
@@ -2614,12 +2685,6 @@ def main():
                         select_pixels = True
                         select_x = x
                         select_y = y
-                        bx, by, bw, bh = get_xywh(x, y,
-                                                  select_x, select_y,
-                                                  width, height)
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
                         print_status(t, "Entered pixels selection mode.")
                 case KeyActions.PASTE:
                     if clipboard != None:
