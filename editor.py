@@ -67,7 +67,7 @@ class KeyActions(Enum):
     CANCEL = auto()
     PASTE = auto()
     LINE = auto()
-    LINE_BG = auto()
+    LINE_CLEAR = auto()
 
     # for prompt
     BACKSPACE = auto()
@@ -91,9 +91,14 @@ class KeyActions(Enum):
     COPY = auto()
     FILL = auto()
     RECT = auto()
-    RECT_BG = auto()
+    RECT_CLEAR = auto()
+    RECT_TOGGLE = auto()
     CIRCLE = auto()
-    CIRCLE_BG = auto()
+    CIRCLE_CLEAR = auto()
+    CIRCLE_TOGGLE = auto()
+    CIRCLE_FILL = auto()
+    CIRCLE_FILL_CLEAR = auto()
+    CIRCLE_FILL_TOGGLE = auto()
 
 KEY_ACTIONS = {
     ord('Q'): KeyActions.QUIT,
@@ -153,13 +158,18 @@ KEY_ACTIONS_SELECT_PIXELS = {
     ord('s'): KeyActions.MOVE_DOWN,
     t.KEY_ESCAPE: KeyActions.CANCEL,
     ord('z'): KeyActions.ZOOMED_COLOR,
-    ord('f'): KeyActions.FILL,
-    ord('x'): KeyActions.CLEAR,
+    ord('r'): KeyActions.FILL,
+    ord('f'): KeyActions.CLEAR,
     ord('v'): KeyActions.TOGGLE,
-    ord('r'): KeyActions.RECT,
-    ord('R'): KeyActions.RECT_BG,
-    ord('c'): KeyActions.CIRCLE,
-    ord('C'): KeyActions.CIRCLE_BG
+    ord('t'): KeyActions.RECT,
+    ord('g'): KeyActions.RECT_CLEAR,
+    ord('b'): KeyActions.RECT_TOGGLE,
+    ord('y'): KeyActions.CIRCLE,
+    ord('h'): KeyActions.CIRCLE_CLEAR,
+    ord('n'): KeyActions.CIRCLE_TOGGLE,
+    ord('u'): KeyActions.CIRCLE_FILL,
+    ord('j'): KeyActions.CIRCLE_FILL_CLEAR,
+    ord('m'): KeyActions.CIRCLE_FILL_TOGGLE
 }
 
 KEY_ACTIONS_PROMPT = {
@@ -392,6 +402,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
                           dw : int, dh : int,
+                          selecting : bool,
                           select_x : int, select_y : int,
                           colors : dict[bool],
                           grid : bool, use_color : bool,
@@ -587,7 +598,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
                             print(color, end='')
                         lastcolor = color
 
-                    if select_x >= 0:
+                    if selecting:
                         sx1 = min(dx + pad, select_x)
                         sy1 = min(dy + pad, select_y)
                         sx2 = max(dx + pad, select_x)
@@ -1332,11 +1343,12 @@ def inkey_numeric(t : blessed.Terminal):
 def print_status(t : blessed.Terminal, text : str, row : int = 0):
     print(t.move_xy(0, row), end='')
     if row == 0:
+        print(t.normal, end='')
         print(t.on_color(4), end='')
         print(t.color(11), end='')
     elif row == 1:
-        print(t.on_color(7), end='')
-        print(t.color(0), end='')
+        print(t.normal, end='')
+        print(t.reverse, end='')
     print(t.ljust(text), end='')
  
 def prompt(t : blessed.Terminal,
@@ -1369,6 +1381,7 @@ def prompt(t : blessed.Terminal,
                         print(t.move_xy(0, 1), end='')
                         print(inp.tounicode(), end='')
         sys.stdout.flush()
+    print(t.normal, end='')
 
     return inp.tounicode()
 
@@ -1898,7 +1911,7 @@ def apply_undo(undos : list[None | DataRect],
                colordata_bg_b : array):
     if len(undos) == 0:
         # just return what was given, no change
-        return dw, dh, data, color_mode, \
+        return 0, 0, 0, 0, dw, dh, data, color_mode, \
                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                colordata_bg_r, colordata_bg_g, colordata_bg_b
 
@@ -1949,7 +1962,7 @@ def apply_redo(undos : list[None | DataRect],
                colordata_bg_b : array):
     if len(redos) == 0:
         # just return what was given, no change
-        return dw, dh, data, color_mode, \
+        return 0, 0, 0, 0, dw, dh, data, color_mode, \
                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                colordata_bg_r, colordata_bg_g, colordata_bg_b
 
@@ -2017,25 +2030,27 @@ def can_convert(color_mode : ColorMode,
 
 def get_xywh(x1 : int, y1 : int,
              x2 : int, y2 : int,
-             width : int, height : int) -> (int, int, int, int):
+             width : int, height : int,
+             clamp : bool = True) -> (int, int, int, int):
     # get top left (1) and bottom right (2)
     sx1 : int = min(x1, x2)
     sy1 : int = min(y1, y2)
     sx2 : int = max(x1, x2)
     sy2 : int = max(y1, y2)
 
-    # clamp
-    sx1 : int = max(0, sx1)
-    sy1 : int = max(0, sy1)
-    sx2 : int = min(width - 1, sx2)
-    sy2 : int = min(height - 1, sy2)
+    if clamp:
+        # clamp
+        sx1 : int = max(0, sx1)
+        sy1 : int = max(0, sy1)
+        sx2 : int = min(width - 1, sx2)
+        sy2 : int = min(height - 1, sy2)
 
     w : int = sx2 - sx1 + 1
     h : int = sy2 - sy1 + 1
 
     return sx1, sy1, w, h
 
-def fill_data(data : array, dw : int,
+def fill_rect(data : array, dw : int,
               x : int, y : int,
               w : int, h : int,
               mode : FillMode):
@@ -2051,7 +2066,7 @@ def fill_data(data : array, dw : int,
         case FillMode.INVERT:
             for ty in range(y, y + h):
                 for tx in range(x, x + w):
-                    data[ty * dw + tx] = ~data[ty * dw + tx] & 0x1
+                    data[ty * dw + tx] ^= 1
 
 def draw_rect(data : array, dw : int,
               x : int, y : int,
@@ -2074,37 +2089,28 @@ def draw_rect(data : array, dw : int,
                 data[ty * dw + (x + w - 1)] = 0
         case FillMode.INVERT:
             for tx in range(x, x + w):
-                data[y * dw + tx] = ~data[y * dw + tx] & 0x1
-                data[(y + h - 1) * dw + tx] = ~data[(y + h - 1) * dw + tx] & 0x1
+                data[y * dw + tx] ^= 1
+                data[(y + h - 1) * dw + tx] ^= 1
             for ty in range(y + 1, y + h - 1):
-                data[ty * dw + x] = ~data[ty * dw + x] & 0x1
-                data[ty * dw + (x + w - 1)] = ~data[ty * dw + (x + w - 1)] & 0x1
+                data[ty * dw + x] ^= 1
+                data[ty * dw + (x + w - 1)] ^= 1
 
-def draw_circle(data : array, dw : int,
+def fill_circle(data : array,
+                dw : int, dh : int,
                 x : int, y : int,
                 w : int, h : int,
                 mode : FillMode):
-    hw : float = w / 2.0
-    hh : float = h / 2.0
-    px : float = 0.0
-    py : float = 0.0
-    quarter : float = math.pi * 0.5
-    points : int = round((w + h) / 2.0)
-    div : float = quarter / points
-    match mode:
-        case FillMode.SET:
-            for i in range(points):
-                px = math.sin(i * div) * w / 2.0
-                py = math.cos(i * div) * h / 2.0
-                data[round(y + hh + py - 1) * dw + round(x + hw + px - 1)] = 1
-                data[round(y + hh + py - 1) * dw + round(x + hw - px)] = 1
-                data[round(y + hh - py) * dw + round(x + hw + px - 1)] = 1
-                data[round(y + hh - py) * dw + round(x + hw - px)] = 1
-        case FillMode.CLEAR:
-            pass
-        case FillMode.INVERT:
-            pass
+    # TODO: redo circles
+    return
 
+def draw_circle(t : blessed.Terminal,
+                data : array,
+                dw : int, dh : int,
+                x : int, y : int,
+                w : int, h : int,
+                mode : FillMode):
+    # TODO: redo circles
+    return
 
 def main():
     width : int = DEFAULT_WIDTH
@@ -2126,6 +2132,7 @@ def main():
     undos : list[None | DataRect] = []
     redos : list[None | DataRect] = []
     clipboard : None | DataRect = None
+    selecting : bool = False
     select_x : int = -1
     select_y : int = -1
     select_pixels : bool = False
@@ -2189,7 +2196,7 @@ def main():
                 print_status(t, "Ready.")
                 refresh_matrix = None
 
-            if select_x >= 0 or cancel:
+            if selecting or cancel:
                 # light redraw after each keypress in select mode
                 bx, by, bw, bh = get_xywh(last_x, last_y,
                                           select_x, select_y,
@@ -2218,34 +2225,34 @@ def main():
                                        width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                        colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
                 else:
-                    select_x = -1
-                    select_y = -1
+                    selecting = False
                     cancel = False
                     print_status(t, "Left selection mode.")
 
-            if select_x < 0:
+            if not selecting:
                 # draw cursor
-                update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                   width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                   colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
-                update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                   width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                   colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
-
+                if last_x >= 0 and last_x < width and last_y >= 0 and last_y < width:
+                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
+                if x >= 0 and x < width and y >= 0 and y < width:
+                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
 
             print(t.move_xy(0, 2), end='')
             print(color_str, end='')
             print("𜶉𜶉", end='')
             display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
                                   x, y, width, height,
-                                  select_x, select_y,
+                                  selecting, select_x, select_y,
                                   COLORS, grid, zoomed_color,
                                   select_pixels, color_mode, data,
                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
             disp_x : int = x
             disp_y : int = y
-            if select_x > 0 and not select_pixels:
+            if selecting and not select_pixels:
                 disp_x = x // 2
                 disp_y = y // 4
             if color_mode == ColorMode.DIRECT:
@@ -2265,7 +2272,7 @@ def main():
             last_x = x
             last_y = y
 
-            if select_x >= 0:
+            if selecting:
                 if not select_pixels:
                     key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
                     match key:
@@ -2358,7 +2365,7 @@ def main():
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-                            fill_data(data, width, bx, by, bw, bh, FillMode.SET)
+                            fill_rect(data, width, bx, by, bw, bh, FillMode.SET)
 
                             refresh_matrix = (bx, by, bw, bh)
                         case KeyActions.CLEAR:
@@ -2372,7 +2379,7 @@ def main():
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-                            fill_data(data, width, bx, by, bw, bh, FillMode.CLEAR)
+                            fill_rect(data, width, bx, by, bw, bh, FillMode.CLEAR)
 
                             refresh_matrix = (bx, by, bw, bh)
                         case KeyActions.TOGGLE:
@@ -2386,7 +2393,7 @@ def main():
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-                            fill_data(data, width, bx, by, bw, bh, FillMode.INVERT)
+                            fill_rect(data, width, bx, by, bw, bh, FillMode.INVERT)
 
                             refresh_matrix = (bx, by, bw, bh)
                         case KeyActions.RECT:
@@ -2403,7 +2410,7 @@ def main():
                             draw_rect(data, width, bx, by, bw, bh, FillMode.SET)
 
                             refresh_matrix = (bx, by, bw, bh)
-                        case KeyActions.RECT_BG:
+                        case KeyActions.RECT_CLEAR:
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
                                                       width, height)
@@ -2420,7 +2427,8 @@ def main():
                         case KeyActions.CIRCLE:
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
-                                                      width, height)
+                                                      width, height,
+                                                      False)
 
                             make_undo(undos, redos,
                                       bx, by, bw, bh, width, data,
@@ -2428,13 +2436,17 @@ def main():
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-                            draw_circle(data, width, bx, by, bw, bh, FillMode.SET)
+                            draw_circle(t, data, width, height, bx, by, bw, bh, FillMode.SET)
 
-                            refresh_matrix = (bx, by, bw, bh)
-                        case KeyActions.CIRCLE_BG:
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
                                                       width, height)
+                            refresh_matrix = (bx, by, bw, bh)
+                        case KeyActions.CIRCLE_CLEAR:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height,
+                                                      False)
 
                             make_undo(undos, redos,
                                       bx, by, bw, bh, width, data,
@@ -2442,8 +2454,29 @@ def main():
                                       colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                       colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-                            draw_circle(data, width, bx, by, bw, bh, FillMode.CLEAR)
+                            draw_circle(data, width, height, bx, by, bw, bh, FillMode.CLEAR)
 
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
+                            refresh_matrix = (bx, by, bw, bh)
+                        case KeyActions.CIRCLE_FILL:
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height,
+                                                      False)
+
+                            make_undo(undos, redos,
+                                      bx, by, bw, bh, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            fill_circle(data, width, height, bx, by, bw, bh, FillMode.SET)
+
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height)
                             refresh_matrix = (bx, by, bw, bh)
 
                     bx, by, bw, bh = get_xywh(x, y,
@@ -2765,18 +2798,17 @@ def main():
                     if x < 0 or x > width - 1 or y < 0 or y > height - 1:
                         print_status(t, "Out of range.")
                     else:
+                        selecting = True
                         select_pixels = False
                         select_x = x
                         select_y = y
                         print_status(t, "Entered tiles selection mode.")
                 case KeyActions.SELECT_PIXELS:
-                    if x < 0 or x > width - 1 or y < 0 or y > height - 1:
-                        print_status(t, "Out of range.")
-                    else:
-                        select_pixels = True
-                        select_x = x
-                        select_y = y
-                        print_status(t, "Entered pixels selection mode.")
+                    selecting = True
+                    select_pixels = True
+                    select_x = x
+                    select_y = y
+                    print_status(t, "Entered pixels selection mode.")
                 case KeyActions.PASTE:
                     if clipboard != None:
                         w, h = clipboard.get_dims()
