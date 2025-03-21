@@ -8,6 +8,7 @@ import pathlib
 import re
 import copy
 import math
+import signal
 
 import blessed
 
@@ -39,6 +40,11 @@ CHARS4 = array('w', ' 𜺨𜴀▘𜴉𜴊🯦𜴍𜺣𜴶𜴹𜴺▖𜵅𜵈▌�
 
 
 t = blessed.Terminal()
+need_winch : bool = False
+need_cont : bool = False
+interrupted : bool = False
+orig_winch = None
+orig_cont = None
 
 class KeyActions(Enum):
     NONE = auto()
@@ -1328,7 +1334,13 @@ def update_matrix_rect(t : blessed.Terminal,
                         print(CHARS4[cell], end='')
 
 def inkey_numeric(t : blessed.Terminal):
-    key = t.inkey()
+    global interrupted
+
+    key = ""
+    while len(key) == 0:
+        key = t.inkey(0.5)
+        if interrupted:
+            return False, None
 
     try:
         return False, t._keymap[key]
@@ -1338,18 +1350,25 @@ def inkey_numeric(t : blessed.Terminal):
     return True, ord(key)
 
 def print_status(t : blessed.Terminal, text : str, row : int = 0):
-    print(t.move_xy(0, row), end='')
-    if row == 0:
-        print(t.normal, end='')
-        print(t.on_color(4), end='')
-        print(t.color(11), end='')
-    else:
-        print(t.normal, end='')
-        print(t.reverse, end='')
-    print(t.ljust(text), end='')
+    global interrupted
+
+    if not interrupted:
+        print(t.move_xy(0, row), end='')
+        if row == 0:
+            print(t.normal, end='')
+            print(t.on_color(4), end='')
+            print(t.color(11), end='')
+        else:
+            print(t.normal, end='')
+            print(t.reverse, end='')
+        print(t.ljust(text), end='')
  
 def prompt(t : blessed.Terminal,
            text : str):
+    global interrupted
+
+    if interrupted:
+        return None
     inp = array('w')
 
     print_status(t, text)
@@ -1359,6 +1378,9 @@ def prompt(t : blessed.Terminal,
     sys.stdout.flush()
     while True:
         is_text, key = inkey_numeric(t)
+        if interrupted:
+            return None
+
         if is_text:
             inp.append(chr(key))
             print(chr(key), end='')
@@ -1389,6 +1411,7 @@ def prompt_yn(t : blessed.Terminal, text : str, default : bool = False) -> bool:
         ans = prompt(t, f"{text} (y/[N])")
 
     if ans is None or len(ans) == 0:
+        # interruption will return default!
         return default
 
     if default:
@@ -1409,6 +1432,8 @@ def clear_screen(t : blessed.Terminal):
 def select_color_rgb(t : blessed.Terminal,
                      r : int, g : int, b : int,
                      allow_transparent : bool):
+    global interrupted
+
     orig_r = r
     orig_g = g
     orig_b = b
@@ -1432,6 +1457,13 @@ def select_color_rgb(t : blessed.Terminal,
         sys.stdout.flush()
 
         _, key = inkey_numeric(t)
+        if interrupted:
+            # abort selection without change
+            r = orig_r
+            g = orig_g
+            b = orig_b
+            break
+
         key = key_to_action(KEY_ACTIONS_COLOR_RGB, key)
         match key:
             case KeyActions.CONFIRM:
@@ -1490,6 +1522,8 @@ def select_color_rgb(t : blessed.Terminal,
 def select_color(t : blessed.Terminal,
                  c : int, color_mode : ColorMode,
                  allow_transparent : bool):
+    global interrupted
+
     x = 0
     y = 0
     width = 4
@@ -1520,6 +1554,9 @@ def select_color(t : blessed.Terminal,
         print(CURSOR, end='')
         sys.stdout.flush()
         _, key = inkey_numeric(t)
+        if interrupted:
+            break
+
         key = key_to_action(KEY_ACTIONS_COLOR, key)
         match key:
             case KeyActions.CONFIRM:
@@ -2360,7 +2397,7 @@ def draw_circle(data : array,
             if y >= 0 and y < dh:
                 for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
                     data[y * dw + i] = 0
-        else:
+        else: # invert
             if h % 2 == 1:
                 if int(hy) >= 0 and int(hy) < dh:
                     if int(hx - hw) >= 0:
@@ -2423,7 +2460,31 @@ def draw_circle(data : array,
                 for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
                     data[y * dw + i] ^= 1
 
+def handler_winch(signum, frame):
+    global need_winch
+    global interrupted
+
+    interrupted = True
+    need_winch = True
+    if callable(orig_winch):
+        orig_winch(signum, frame)
+
+def handler_cont(signum, frame):
+    global need_cont
+    global interrupted
+
+    interrupted = True
+    need_cont = True
+    if callable(orig_cont):
+        orig_cont(signum, frame)
+
 def main():
+    global need_winch
+    global need_cont
+    global orig_winch
+    global orig_cont
+    global interrupted
+
     width : int = DEFAULT_WIDTH
     height : int = DEFAULT_HEIGHT
     x : int = 0
@@ -2439,7 +2500,7 @@ def main():
     bg_g : int = 0
     bg_b : int = 0
     color_str : str = None
-    refresh_matrix : None | tuple[int] = (x, y, width, height)
+    refresh_matrix : None | tuple[int] = None
     undos : list[None | DataRect] = []
     redos : list[None | DataRect] = []
     clipboard : None | DataRect = None
@@ -2452,6 +2513,7 @@ def main():
     last_y : int = -1
     tool_operation : FillMode = FillMode.SET
     tool_mode : ToolMode = ToolMode.OUTLINE
+    running = True
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -2483,49 +2545,43 @@ def main():
     #global logfile
     #logfile = open("log.txt", 'w')
 
-    with t.cbreak(), t.fullscreen(), t.hidden_cursor():
-        while True:
-            if refresh_matrix is not None:
-                print(t.normal, end='')
-                for i in range(height // 4):
-                    print(t.move_xy(PREVIEW_X - 1, 2 + i), end='')
-                    print(TILES[TILE_RIGHT][1], end='')
-                for i in range(height // 4):
-                    print(t.move_xy(PREVIEW_X + width // 2, 2 + i), end='')
-                    print(TILES[TILE_LEFT][0], end='')
-                print(t.move_xy(PREVIEW_X - 1, 2 + (height // 4)), end='')
-                print(TILES[TILE_CORNER_TOPRIGHT][1], end='')
-                for i in range(width // 2): 
-                    print(TILES[TILE_TOP][0], end='')
-                print(TILES[TILE_CORNER_TOPLEFT][0], end='')
- 
-                cw, ch = pixels_to_occupied_wh(refresh_matrix[0], refresh_matrix[1], refresh_matrix[2], refresh_matrix[3])
-                cx = refresh_matrix[0] // 2
-                cy = refresh_matrix[1] // 4
-                display_matrix(t, color_mode, PREVIEW_X, 2, cw, ch, cx, cy,
-                               width, data,
-                               colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                               colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                print_status(t, "Ready.")
-                refresh_matrix = None
+    orig_winch = signal.getsignal(signal.SIGWINCH)
+    orig_cont = signal.getsignal(signal.SIGCONT)
+    signal.signal(signal.SIGWINCH, handler_winch)
+    signal.signal(signal.SIGCONT, handler_cont)
 
-            if selecting or cancel:
-                # light redraw after each keypress in select mode
-                bx, by, bw, bh = get_xywh(last_x, last_y,
-                                          select_x, select_y,
-                                          width, height)
-                if not select_pixels:
-                    bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                    bx = bx // 2 * 2
-                    by = by // 4 * 4
-                    bw = bw * 2
-                    bh = bh * 4
-                update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                   width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                   colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+    while running:
+        refresh_matrix = (0, 0, width, height)
 
-                if not cancel:
-                    bx, by, bw, bh = get_xywh(x, y,
+        with t.cbreak(), t.fullscreen(), t.hidden_cursor():
+            while True:
+                if refresh_matrix is not None:
+                    print(t.normal, end='')
+                    for i in range(height // 4):
+                        print(t.move_xy(PREVIEW_X - 1, 2 + i), end='')
+                        print(TILES[TILE_RIGHT][1], end='')
+                    for i in range(height // 4):
+                        print(t.move_xy(PREVIEW_X + width // 2, 2 + i), end='')
+                        print(TILES[TILE_LEFT][0], end='')
+                    print(t.move_xy(PREVIEW_X - 1, 2 + (height // 4)), end='')
+                    print(TILES[TILE_CORNER_TOPRIGHT][1], end='')
+                    for i in range(width // 2):
+                        print(TILES[TILE_TOP][0], end='')
+                    print(TILES[TILE_CORNER_TOPLEFT][0], end='')
+
+                    cw, ch = pixels_to_occupied_wh(refresh_matrix[0], refresh_matrix[1], refresh_matrix[2], refresh_matrix[3])
+                    cx = refresh_matrix[0] // 2
+                    cy = refresh_matrix[1] // 4
+                    display_matrix(t, color_mode, PREVIEW_X, 2, cw, ch, cx, cy,
+                                   width, data,
+                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                    print_status(t, "Ready.")
+                    refresh_matrix = None
+
+                if selecting or cancel:
+                    # light redraw after each keypress in select mode
+                    bx, by, bw, bh = get_xywh(last_x, last_y,
                                               select_x, select_y,
                                               width, height)
                     if not select_pixels:
@@ -2536,121 +2592,223 @@ def main():
                         bh = bh * 4
                     update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                        width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
+
+                    if not cancel:
+                        bx, by, bw, bh = get_xywh(x, y,
+                                                  select_x, select_y,
+                                                  width, height)
+                        if not select_pixels:
+                            bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                            bx = bx // 2 * 2
+                            by = by // 4 * 4
+                            bw = bw * 2
+                            bh = bh * 4
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+                    else:
+                        selecting = False
+                        cancel = False
+                        print_status(t, "Left selection mode.")
+
+                if not selecting:
+                    # draw cursor
+                    if last_x >= 0 and last_x < width and last_y >= 0 and last_y < width:
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
+                    if x >= 0 and x < width and y >= 0 and y < width:
+                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
+
+                print(t.move_xy(0, 2), end='')
+                print(color_str, end='')
+                print("𜶉𜶉", end='')
+                display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
+                                      x, y, width, height,
+                                      selecting, select_x, select_y,
+                                      COLORS, grid, zoomed_color,
+                                      select_pixels, color_mode, data,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                disp_x : int = x
+                disp_y : int = y
+                if selecting and not select_pixels:
+                    disp_x = x // 2
+                    disp_y = y // 4
+                if color_mode == ColorMode.DIRECT:
+                    bgstr = "Transparent"
+                    if bg_r >= 0:
+                        bgstr = f"{bg_r} {bg_g} {bg_b}"
+                    print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
                 else:
-                    selecting = False
-                    cancel = False
-                    print_status(t, "Left selection mode.")
+                    bgstr = "Transparent"
+                    if bg_r >= 0:
+                        bgstr = f"{bg_r}"
+                    print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r}  {bgstr}", 1)
 
-            if not selecting:
-                # draw cursor
-                if last_x >= 0 and last_x < width and last_y >= 0 and last_y < width:
-                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
-                if x >= 0 and x < width and y >= 0 and y < width:
-                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
+                sys.stdout.flush()
+                _, key = inkey_numeric(t)
+                last_x = x
+                last_y = y
 
-            print(t.move_xy(0, 2), end='')
-            print(color_str, end='')
-            print("𜶉𜶉", end='')
-            display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
-                                  x, y, width, height,
-                                  selecting, select_x, select_y,
-                                  COLORS, grid, zoomed_color,
-                                  select_pixels, color_mode, data,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-            disp_x : int = x
-            disp_y : int = y
-            if selecting and not select_pixels:
-                disp_x = x // 2
-                disp_y = y // 4
-            if color_mode == ColorMode.DIRECT:
-                bgstr = "Transparent"
-                if bg_r >= 0:
-                    bgstr = f"{bg_r} {bg_g} {bg_b}"
-                print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
-            else:
-                bgstr = "Transparent"
-                if bg_r >= 0:
-                    bgstr = f"{bg_r}"
-                print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r}  {bgstr}", 1)
+                if not interrupted:
+                    if selecting:
+                        if not select_pixels:
+                            key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
+                            match key:
+                                case KeyActions.MOVE_LEFT:
+                                    x -= 1
+                                case KeyActions.MOVE_RIGHT:
+                                    x += 1
+                                case KeyActions.MOVE_UP:
+                                    y -= 1
+                                case KeyActions.MOVE_DOWN:
+                                    y += 1
+                                case KeyActions.CANCEL:
+                                    cancel = True
+                                case KeyActions.ZOOMED_COLOR:
+                                    zoomed_color = not zoomed_color
+                                    if zoomed_color:
+                                        print_status(t, f"Zoomed view color toggled on.")
+                                    else:
+                                        print_status(t, f"Zoomed view color toggled off.")
+                                case KeyActions.COPY:
+                                    bx, by, bw, bh = get_xywh(x, y,
+                                                              select_x, select_y,
+                                                              width, height)
 
-            sys.stdout.flush()
-            _, key = inkey_numeric(t)
+                                    clipboard = make_copy(bx, by, bw, bh, width, data, color_mode,
+                                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                                    #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
+                                    print_status(t, f"Copied.")
+                                case KeyActions.RECT:
+                                    bx, by, bw, bh = get_xywh(x, y,
+                                                              select_x, select_y,
+                                                              width, height)
+                                    bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
+                                    bx //= 2
+                                    by //= 4
 
-            last_x = x
-            last_y = y
+                                    make_undo(undos, redos,
+                                              bx * 2, by * 4, bw * 2, bh * 4, width, data,
+                                              color_mode,
+                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
-            if selecting:
-                if not select_pixels:
-                    key = key_to_action(KEY_ACTIONS_SELECT_TILES, key)
-                    match key:
-                        case KeyActions.MOVE_LEFT:
-                            x -= 1
-                        case KeyActions.MOVE_RIGHT:
-                            x += 1
-                        case KeyActions.MOVE_UP:
-                            y -= 1
-                        case KeyActions.MOVE_DOWN:
-                            y += 1
-                        case KeyActions.CANCEL:
-                            cancel = True
-                        case KeyActions.ZOOMED_COLOR:
-                            zoomed_color = not zoomed_color
-                            if zoomed_color:
-                                print_status(t, f"Zoomed view color toggled on.")
-                            else:
-                                print_status(t, f"Zoomed view color toggled off.")
-                        case KeyActions.COPY:
-                            bx, by, bw, bh = get_xywh(x, y,
-                                                      select_x, select_y,
-                                                      width, height)
+                                    for ty in range(by, by + bh):
+                                        for tx in range(bx, bx + bw):
+                                            if color_mode == ColorMode.DIRECT:
+                                                colordata_fg_r[ty * (width // 2) + tx] = fg_r
+                                                colordata_fg_g[ty * (width // 2) + tx] = fg_g
+                                                colordata_fg_b[ty * (width // 2) + tx] = fg_b
+                                                colordata_bg_r[ty * (width // 2) + tx] = bg_r
+                                                colordata_bg_g[ty * (width // 2) + tx] = bg_g
+                                                colordata_bg_b[ty * (width // 2) + tx] = bg_b
+                                            else:
+                                                colordata_fg_r[ty * (width // 2) + tx] = fg_r
+                                                colordata_bg_r[ty * (width // 2) + tx] = bg_r
 
-                            clipboard = make_copy(bx, by, bw, bh, width, data, color_mode,
-                                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                            #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
-                            print_status(t, f"Copied.")
-                        case KeyActions.RECT:
+                                    refresh_matrix = (bx * 2, by * 4, bw * 2, bw * 4)
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
                                                       width, height)
                             bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                            bx //= 2
-                            by //= 4
-
-                            make_undo(undos, redos,
-                                      bx * 2, by * 4, bw * 2, bh * 4, width, data,
-                                      color_mode,
-                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                            for ty in range(by, by + bh):
-                                for tx in range(bx, bx + bw):
-                                    if color_mode == ColorMode.DIRECT:
-                                        colordata_fg_r[ty * (width // 2) + tx] = fg_r
-                                        colordata_fg_g[ty * (width // 2) + tx] = fg_g
-                                        colordata_fg_b[ty * (width // 2) + tx] = fg_b
-                                        colordata_bg_r[ty * (width // 2) + tx] = bg_r
-                                        colordata_bg_g[ty * (width // 2) + tx] = bg_g
-                                        colordata_bg_b[ty * (width // 2) + tx] = bg_b
+                            print_status(t, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
+                        else: # pixels selection
+                            key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
+                            match key:
+                                case KeyActions.MOVE_LEFT:
+                                    x -= 1
+                                case KeyActions.MOVE_RIGHT:
+                                    x += 1
+                                case KeyActions.MOVE_UP:
+                                    y -= 1
+                                case KeyActions.MOVE_DOWN:
+                                    y += 1
+                                case KeyActions.CANCEL:
+                                    cancel = True
+                                case KeyActions.ZOOMED_COLOR:
+                                    zoomed_color = not zoomed_color
+                                    if zoomed_color:
+                                        print_status(t, f"Zoomed view color toggled on.")
                                     else:
-                                        colordata_fg_r[ty * (width // 2) + tx] = fg_r
-                                        colordata_bg_r[ty * (width // 2) + tx] = bg_r
+                                        print_status(t, f"Zoomed view color toggled off.")
+                                case KeyActions.OPERATION:
+                                    tool_operation = FILL_MODE_CYCLE[tool_operation]
+                                case KeyActions.TOOL_MODE:
+                                    if tool_mode == ToolMode.OUTLINE:
+                                        tool_mode = ToolMode.FILL
+                                    else:
+                                        tool_mode = ToolMode.OUTLINE
+                                case KeyActions.RECT:
+                                    bx, by, bw, bh = get_xywh(x, y,
+                                                              select_x, select_y,
+                                                              width, height)
 
-                            refresh_matrix = (bx * 2, by * 4, bw * 2, bw * 4)
-                    bx, by, bw, bh = get_xywh(x, y,
-                                              select_x, select_y,
-                                              width, height)
-                    bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                    print_status(t, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
-                else: # pixels selection
-                    key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
+                                    make_undo(undos, redos,
+                                              bx, by, bw, bh, width, data,
+                                              color_mode,
+                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                                    if tool_mode == ToolMode.OUTLINE:
+                                        draw_rect(data, width, height, bx, by, bw, bh, tool_operation)
+                                    else:
+                                        fill_rect(data, width, height, bx, by, bw, bh, tool_operation)
+
+                                    refresh_matrix = (bx, by, bw, bh)
+                                case KeyActions.CIRCLE:
+                                    bx, by, bw, bh = get_xywh(x, y,
+                                                              select_x, select_y,
+                                                              width, height,
+                                                              False)
+
+                                    make_undo(undos, redos,
+                                              bx, by, bw, bh, width, data,
+                                              color_mode,
+                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                                    if tool_mode == ToolMode.OUTLINE:
+                                        draw_circle(data, width, height, bx, by, bw, bh, tool_operation)
+                                    else:
+                                        fill_circle(data, width, height, bx, by, bw, bh, tool_operation)
+
+                                    bx, by, bw, bh = get_xywh(x, y,
+                                                              select_x, select_y,
+                                                              width, height)
+                                    refresh_matrix = (0, 0, width, height)
+                                    #refresh_matrix = (bx, by, bw, bh)
+
+                            bx, by, bw, bh = get_xywh(x, y,
+                                                      select_x, select_y,
+                                                      width, height,
+                                                      False)
+                            tool_mode_str = "Outline"
+                            if tool_mode == ToolMode.FILL:
+                                tool_mode_str = "Fill"
+                            tool_operation_str = "Set"
+                            if tool_operation == FillMode.CLEAR:
+                                tool_operation_str = "Clear"
+                            elif tool_operation == FillMode.INVERT:
+                                tool_operation_str = "Invert"
+                            print_status(t, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
+
+                        continue
+
+                    key = key_to_action(KEY_ACTIONS, key)
                     match key:
+                        case KeyActions.QUIT:
+                            ans = prompt_yn(t, "Quit?")
+                            if not ans:
+                                print_status(t, "Returned.")
+                            else:
+                                running = False
+                                break
                         case KeyActions.MOVE_LEFT:
                             x -= 1
                         case KeyActions.MOVE_RIGHT:
@@ -2659,434 +2817,365 @@ def main():
                             y -= 1
                         case KeyActions.MOVE_DOWN:
                             y += 1
-                        case KeyActions.CANCEL:
-                            cancel = True
+                        case KeyActions.TOGGLE:
+                            if x >= 0 and x < width and y >= 0 and y < height:
+                                make_undo(undos, redos,
+                                          x, y, 1, 1, width, data,
+                                          color_mode,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                                data[width * y + x] = not data[width * y + x]
+                                update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
+                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                        case KeyActions.RESIZE:
+                            newwidth = prompt(t, "New Width?")
+                            if newwidth is None:
+                                continue
+                            try:
+                                newwidth = int(newwidth)
+                            except ValueError:
+                                print_status(t, "Width must be an integer.")
+                                continue
+                            if newwidth < 2 or newwidth % 2 != 0:
+                                print_status(t, "Width must be non-zero and divisible by 2.")
+                                continue
+                            newheight = prompt(t, "New Height?")
+                            if newheight is None:
+                                continue
+                            try:
+                                newheight = int(newheight)
+                            except ValueError:
+                                print_status(t, "Height must be an integer.")
+                                continue
+                            if newheight < 4 or newheight % 4 != 0:
+                                print_status(t, "Height must be non-zero and divisible by 4.")
+                                continue
+                            if newwidth == width and newheight == height:
+                                print_status(t, "New width and height are the same.")
+                                continue
+
+                            make_undo(undos, redos,
+                                      0, 0, width, height, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            newdata = array('i', itertools.repeat(0, newwidth * newheight))
+                            newcolordata_fg_r, newcolordata_fg_g, newcolordata_fg_b, \
+                                newcolordata_bg_r, newcolordata_bg_g, newcolordata_bg_b = \
+                                new_color_data(color_mode, newwidth, newheight)
+                            smallestwidth = min(width, newwidth)
+                            smallestheight = min(height, newheight)
+                            for i in range(smallestheight):
+                                newdata[newwidth * i:newwidth * i + smallestwidth] = data[width * i:width * i + smallestwidth]
+                            for i in range(smallestheight // 4):
+                                newcolordata_fg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_fg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                                newcolordata_fg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_fg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                                newcolordata_fg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_fg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                                newcolordata_bg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_bg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                                newcolordata_bg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_bg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                                newcolordata_bg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
+                                    colordata_bg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
+                            data = newdata
+                            colordata_fg_r = newcolordata_fg_r
+                            colordata_fg_g = newcolordata_fg_g
+                            colordata_fg_b = newcolordata_fg_b
+                            colordata_bg_r = newcolordata_bg_r
+                            colordata_bg_g = newcolordata_bg_g
+                            colordata_bg_b = newcolordata_bg_b
+                            width = newwidth
+                            height = newheight
+                            x = min(x, width)
+                            y = min(y, height)
+                            clear_screen(t)
+                            refresh_matrix = (0, 0, width, height)
+                            print_status(t, f"Image resized to {width}, {height}.")
+                        case KeyActions.GRID:
+                            grid = not grid
+                            if grid:
+                                print_status(t, f"Grid toggled on.")
+                            else:
+                                print_status(t, f"Grid toggled off.")
                         case KeyActions.ZOOMED_COLOR:
                             zoomed_color = not zoomed_color
                             if zoomed_color:
                                 print_status(t, f"Zoomed view color toggled on.")
                             else:
                                 print_status(t, f"Zoomed view color toggled off.")
-                        case KeyActions.OPERATION:
-                            tool_operation = FILL_MODE_CYCLE[tool_operation]
-                        case KeyActions.TOOL_MODE:
-                            if tool_mode == ToolMode.OUTLINE:
-                                tool_mode = ToolMode.FILL
+                        case KeyActions.CLEAR:
+                            ans = prompt_yn(t, "This will clear the image, are you sure?")
+                            if ans:
+                                make_undo(undos, redos,
+                                          0, 0, width, height, width, data,
+                                          color_mode,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                                data = array('i', itertools.repeat(0, width * height))
+                                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+                                    colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+                                    new_color_data(color_mode, width, height)
+                                clear_screen(t)
+                                refresh_matrix = (0, 0, width, height)
+                                print_status(t, f"Image cleared.")
                             else:
-                                tool_mode = ToolMode.OUTLINE
-                        case KeyActions.RECT:
-                            bx, by, bw, bh = get_xywh(x, y,
-                                                      select_x, select_y,
-                                                      width, height)
-
-                            make_undo(undos, redos,
-                                      bx, by, bw, bh, width, data,
-                                      color_mode,
-                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                            if tool_mode == ToolMode.OUTLINE:
-                                draw_rect(data, width, height, bx, by, bw, bh, tool_operation)
-                            else:
-                                fill_rect(data, width, height, bx, by, bw, bh, tool_operation)
-
-                            refresh_matrix = (bx, by, bw, bh)
-                        case KeyActions.CIRCLE:
-                            bx, by, bw, bh = get_xywh(x, y,
-                                                      select_x, select_y,
-                                                      width, height,
-                                                      False)
-
-                            make_undo(undos, redos,
-                                      bx, by, bw, bh, width, data,
-                                      color_mode,
-                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                            if tool_mode == ToolMode.OUTLINE:
-                                draw_circle(data, width, height, bx, by, bw, bh, tool_operation)
-                            else:
-                                fill_circle(data, width, height, bx, by, bw, bh, tool_operation)
-
-                            bx, by, bw, bh = get_xywh(x, y,
-                                                      select_x, select_y,
-                                                      width, height)
-                            refresh_matrix = (0, 0, width, height)
-                            #refresh_matrix = (bx, by, bw, bh)
-
-                    bx, by, bw, bh = get_xywh(x, y,
-                                              select_x, select_y,
-                                              width, height,
-                                              False)
-                    tool_mode_str = "Outline"
-                    if tool_mode == ToolMode.FILL:
-                        tool_mode_str = "Fill"
-                    tool_operation_str = "Set"
-                    if tool_operation == FillMode.CLEAR:
-                        tool_operation_str = "Clear"
-                    elif tool_operation == FillMode.INVERT:
-                        tool_operation_str = "Invert"
-                    print_status(t, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
-
-                continue
-
-            key = key_to_action(KEY_ACTIONS, key)
-            match key:
-                case KeyActions.QUIT:
-                    ans = prompt_yn(t, "Quit?")
-                    if not ans:
-                        print_status(t, "Returned.")
-                    else:
-                        break
-                case KeyActions.MOVE_LEFT:
-                    x -= 1
-                case KeyActions.MOVE_RIGHT:
-                    x += 1
-                case KeyActions.MOVE_UP:
-                    y -= 1
-                case KeyActions.MOVE_DOWN:
-                    y += 1
-                case KeyActions.TOGGLE:
-                    if x >= 0 and x < width and y >= 0 and y < height:
-                        make_undo(undos, redos,
-                                  x, y, 1, 1, width, data,
-                                  color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                        data[width * y + x] = not data[width * y + x]
-                        update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
-                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                case KeyActions.RESIZE:
-                    newwidth = prompt(t, "New Width?")
-                    if newwidth is None:
-                        continue
-                    try:
-                        newwidth = int(newwidth)
-                    except ValueError:
-                        print_status(t, "Width must be an integer.")
-                        continue
-                    if newwidth < 2 or newwidth % 2 != 0:
-                        print_status(t, "Width must be non-zero and divisible by 2.")
-                        continue
-                    newheight = prompt(t, "New Height?")
-                    if newheight is None:
-                        continue
-                    try:
-                        newheight = int(newheight)
-                    except ValueError:
-                        print_status(t, "Height must be an integer.")
-                        continue
-                    if newheight < 4 or newheight % 4 != 0:
-                        print_status(t, "Height must be non-zero and divisible by 4.")
-                        continue
-                    if newwidth == width and newheight == height:
-                        print_status(t, "New width and height are the same.")
-                        continue
-
-                    make_undo(undos, redos,
-                              0, 0, width, height, width, data,
-                              color_mode,
-                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                    newdata = array('i', itertools.repeat(0, newwidth * newheight))
-                    newcolordata_fg_r, newcolordata_fg_g, newcolordata_fg_b, \
-                        newcolordata_bg_r, newcolordata_bg_g, newcolordata_bg_b = \
-                        new_color_data(color_mode, newwidth, newheight)
-                    smallestwidth = min(width, newwidth)
-                    smallestheight = min(height, newheight)
-                    for i in range(smallestheight):
-                        newdata[newwidth * i:newwidth * i + smallestwidth] = data[width * i:width * i + smallestwidth]
-                    for i in range(smallestheight // 4):
-                        newcolordata_fg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_fg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                        newcolordata_fg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_fg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                        newcolordata_fg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_fg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                        newcolordata_bg_r[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_bg_r[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                        newcolordata_bg_g[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_bg_g[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                        newcolordata_bg_b[(newwidth // 2) * i:(newwidth // 2) * i + (smallestwidth // 2)] = \
-                            colordata_bg_b[(width // 2) * i:(width // 2) * i + (smallestwidth // 2)]
-                    data = newdata
-                    colordata_fg_r = newcolordata_fg_r
-                    colordata_fg_g = newcolordata_fg_g
-                    colordata_fg_b = newcolordata_fg_b
-                    colordata_bg_r = newcolordata_bg_r
-                    colordata_bg_g = newcolordata_bg_g
-                    colordata_bg_b = newcolordata_bg_b
-                    width = newwidth
-                    height = newheight
-                    x = min(x, width)
-                    y = min(y, height)
-                    clear_screen(t)
-                    refresh_matrix = (0, 0, width, height)
-                    print_status(t, f"Image resized to {width}, {height}.")
-                case KeyActions.GRID:
-                    grid = not grid
-                    if grid:
-                        print_status(t, f"Grid toggled on.")
-                    else:
-                        print_status(t, f"Grid toggled off.")
-                case KeyActions.ZOOMED_COLOR:
-                    zoomed_color = not zoomed_color
-                    if zoomed_color:
-                        print_status(t, f"Zoomed view color toggled on.")
-                    else:
-                        print_status(t, f"Zoomed view color toggled off.")
-                case KeyActions.CLEAR:
-                    ans = prompt_yn(t, "This will clear the image, are you sure?")
-                    if ans:
-                        make_undo(undos, redos,
-                                  0, 0, width, height, width, data,
-                                  color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                        data = array('i', itertools.repeat(0, width * height))
-                        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
-                            colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-                            new_color_data(color_mode, width, height)
-                        clear_screen(t)
-                        refresh_matrix = (0, 0, width, height)
-                        print_status(t, f"Image cleared.")
-                    else:
-                        print_status(t, f"Clear canceled.")
-                case KeyActions.HOME:
-                    x = 0
-                    y = 0
-                    print_status(t, f"Returned to home.")
-                case KeyActions.EDGE:
-                    if x < 0:
-                        x = 0
-                    elif x >= width:
-                        x = width - 1
-                    if y < 0:
-                        y = 0
-                    elif y >= height:
-                        y = height - 1
-                    print_status(t, f"Found nearest edge.")
-                case KeyActions.COLOR_MODE:
-                    new_color_mode = None
-                    ans = prompt(t, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
-                    if ans is None:
-                        print_status(t, "Mode change canceled.")
-                        continue
-
-                    if ans[0].lower() == 'd':
-                        if color_mode == ColorMode.DIRECT:
-                            print_status(t, "Already in DIRECT color mode.")
-                            continue
-                        else:
-                            new_color_mode = ColorMode.DIRECT
-                    elif ans[0] == '1':
-                        if color_mode == ColorMode.C16:
-                            print_status(t, "Already in 16 color mode.")
-                            continue
-                        else:
-                            new_color_mode = ColorMode.C16
-                    elif ans[0] == '2':
-                        if color_mode == ColorMode.C256:
-                            print_status(t, "Already in 256 color mode.")
-                            continue
-                        else:
-                            new_color_mode = ColorMode.C256
-                    else:
-                        print_status(t, "Unrecognized response.")
-                        continue
-
-                    msg = can_convert(color_mode, new_color_mode, colordata_fg_r, colordata_bg_r)
-                    if msg is not None:
-                        ans = prompt_yn(t, f"{msg} OK TO CLEAR?")
-                        if not ans:
-                            print_status(t, "Mode change canceled.")
-                            continue
-
-                    make_undo(undos, redos,
-                              0, 0, width, height, width, data,
-                              color_mode,
-                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                    color_mode = new_color_mode
-                    data = array('i', itertools.repeat(0, width * height))
-                    colordata_fg_r, colordata_fg_g, colordata_fg_b, \
-                        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-                        new_color_data(color_mode, width, height)
-                    fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
-                    clear_screen(t)
-                    refresh_matrix = (0, 0, width, height)
-                    if color_mode == ColorMode.C16:
-                        print_status(t, "Changed to 16 color mode.")
-                    elif color_mode == ColorMode.C256:
-                        print_status(t, "Changed to 256 color mode.")
-                    else:
-                        print_status(t, "Changed to DIRECT color mode.")
-                case KeyActions.SELECT_FG_COLOR:
-                    if color_mode == ColorMode.DIRECT:
-                        fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b, False)
-                        print_status(t, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
-                    else:
-                        fg_r = select_color(t, fg_r, color_mode, False)
-                        print_status(t, f"Foreground color index {fg_r} selected.")
-                    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
-                    # screen was cleared so needs to be drawn
-                    refresh_matrix = (0, 0, width, height)
-                case KeyActions.SELECT_BG_COLOR:
-                    if color_mode == ColorMode.DIRECT:
-                        bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b, True)
-                        if bg_r < 0:
-                            print_status(t, f"Transparent background selected.")
-                        else:
-                            print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
-                    else:
-                        bg_r = select_color(t, bg_r, color_mode, True)
-                        if bg_r < 0:
-                            print_status(t, f"Transparent background selected.")
-                        else:
-                            print_status(t, f"Background color index {bg_r} selected.")
-                    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
-                    # screen was cleared so needs to be drawn
-                    refresh_matrix = (0, 0, width, height)
-                case KeyActions.PUT_COLOR:
-                    make_undo(undos, redos,
-                              x, y, 1, 1, width, data,
-                              color_mode,
-                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                    if color_mode == ColorMode.DIRECT:
-                        colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
-                        colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)] = fg_g
-                        colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)] = fg_b
-                        colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)] = bg_r
-                        colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)] = bg_g
-                        colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)] = bg_b
-                    else:
-                        colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
-                        colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)] = bg_r
-                    update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                case KeyActions.PICK_COLOR:
-                    if color_mode == ColorMode.DIRECT:
-                        fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
-                        fg_g = colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)]
-                        fg_b = colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)]
-                        bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
-                        bg_g = colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)]
-                        bg_b = colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)]
-                    else:
-                        fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
-                        bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
-                    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
-                case KeyActions.SAVE_FILE:
-                    filename = prompt(t, "Filename?")
-                    if filename is not None:
-                        path = pathlib.Path(filename)
-                        if path.exists():
-                            ans = prompt_yn(t, "File exists, overwrite?")
-                            if not ans:
-                                print_status(t, "Save canceled.")
+                                print_status(t, f"Clear canceled.")
+                        case KeyActions.HOME:
+                            x = 0
+                            y = 0
+                            print_status(t, f"Returned to home.")
+                        case KeyActions.EDGE:
+                            if x < 0:
+                                x = 0
+                            elif x >= width:
+                                x = width - 1
+                            if y < 0:
+                                y = 0
+                            elif y >= height:
+                                y = height - 1
+                            print_status(t, f"Found nearest edge.")
+                        case KeyActions.COLOR_MODE:
+                            new_color_mode = None
+                            ans = prompt(t, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
+                            if ans is None:
+                                print_status(t, "Mode change canceled.")
                                 continue
 
-                        ans = prompt_yn(t, "With color?", True)
-                        color = True
-                        if not ans:
-                            color = False
+                            if ans[0].lower() == 'd':
+                                if color_mode == ColorMode.DIRECT:
+                                    print_status(t, "Already in DIRECT color mode.")
+                                    continue
+                                else:
+                                    new_color_mode = ColorMode.DIRECT
+                            elif ans[0] == '1':
+                                if color_mode == ColorMode.C16:
+                                    print_status(t, "Already in 16 color mode.")
+                                    continue
+                                else:
+                                    new_color_mode = ColorMode.C16
+                            elif ans[0] == '2':
+                                if color_mode == ColorMode.C256:
+                                    print_status(t, "Already in 256 color mode.")
+                                    continue
+                                else:
+                                    new_color_mode = ColorMode.C256
+                            else:
+                                print_status(t, "Unrecognized response.")
+                                continue
 
-                        save_file(t, path, color, data, width, color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                        print_status(t, "File saved.")
-                    else:
-                        print_status(t, "Save canceled.")
-                case KeyActions.REDRAW:
+                            msg = can_convert(color_mode, new_color_mode, colordata_fg_r, colordata_bg_r)
+                            if msg is not None:
+                                ans = prompt_yn(t, f"{msg} OK TO CLEAR?")
+                                if not ans:
+                                    print_status(t, "Mode change canceled.")
+                                    continue
+
+                            make_undo(undos, redos,
+                                      0, 0, width, height, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            color_mode = new_color_mode
+                            data = array('i', itertools.repeat(0, width * height))
+                            colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+                                colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+                                new_color_data(color_mode, width, height)
+                            fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
+                            clear_screen(t)
+                            refresh_matrix = (0, 0, width, height)
+                            if color_mode == ColorMode.C16:
+                                print_status(t, "Changed to 16 color mode.")
+                            elif color_mode == ColorMode.C256:
+                                print_status(t, "Changed to 256 color mode.")
+                            else:
+                                print_status(t, "Changed to DIRECT color mode.")
+                        case KeyActions.SELECT_FG_COLOR:
+                            if color_mode == ColorMode.DIRECT:
+                                fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b, False)
+                                print_status(t, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
+                            else:
+                                fg_r = select_color(t, fg_r, color_mode, False)
+                                print_status(t, f"Foreground color index {fg_r} selected.")
+                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                            # screen was cleared so needs to be drawn
+                            refresh_matrix = (0, 0, width, height)
+                        case KeyActions.SELECT_BG_COLOR:
+                            if color_mode == ColorMode.DIRECT:
+                                bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b, True)
+                                if bg_r < 0:
+                                    print_status(t, f"Transparent background selected.")
+                                else:
+                                    print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
+                            else:
+                                bg_r = select_color(t, bg_r, color_mode, True)
+                                if bg_r < 0:
+                                    print_status(t, f"Transparent background selected.")
+                                else:
+                                    print_status(t, f"Background color index {bg_r} selected.")
+                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                            # screen was cleared so needs to be drawn
+                            refresh_matrix = (0, 0, width, height)
+                        case KeyActions.PUT_COLOR:
+                            make_undo(undos, redos,
+                                      x, y, 1, 1, width, data,
+                                      color_mode,
+                                      colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                      colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                            if color_mode == ColorMode.DIRECT:
+                                colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
+                                colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)] = fg_g
+                                colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)] = fg_b
+                                colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)] = bg_r
+                                colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)] = bg_g
+                                colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)] = bg_b
+                            else:
+                                colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
+                                colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)] = bg_r
+                            update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                        case KeyActions.PICK_COLOR:
+                            if color_mode == ColorMode.DIRECT:
+                                fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
+                                fg_g = colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)]
+                                fg_b = colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_g = colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_b = colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)]
+                            else:
+                                fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
+                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                        case KeyActions.SAVE_FILE:
+                            filename = prompt(t, "Filename?")
+                            if filename is not None:
+                                path = pathlib.Path(filename)
+                                if path.exists():
+                                    ans = prompt_yn(t, "File exists, overwrite?")
+                                    if not ans:
+                                        print_status(t, "Save canceled.")
+                                        continue
+
+                                ans = prompt_yn(t, "With color?", True)
+                                color = True
+                                if not ans:
+                                    color = False
+
+                                save_file(t, path, color, data, width, color_mode,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                                print_status(t, "File saved.")
+                            else:
+                                print_status(t, "Save canceled.")
+                        case KeyActions.REDRAW:
+                            clear_screen(t)
+                            refresh_matrix = (0, 0, width, height)
+                        case KeyActions.UNDO:
+                            undos_len = len(undos)
+                            undo_x, undo_y, undo_w, undo_h, \
+                                width, height, data, color_mode, \
+                                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+                                colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+                                apply_undo(undos, redos,
+                                           width, height, data,
+                                           color_mode,
+                                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                            if undos_len == len(undos):
+                                print_status(t, "No more undos.")
+                            else:
+                                clear_screen(t)
+                                refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
+                                print_status(t, "Undid.")
+                        case KeyActions.REDO:
+                            redos_len = len(redos)
+                            redo_x, redo_y, undo_w, undo_h, \
+                                width, height, data, color_mode, \
+                                colordata_fg_r, colordata_fg_g, colordata_fg_b, \
+                                colordata_bg_r, colordata_bg_g, colordata_bg_b = \
+                                apply_redo(undos, redos,
+                                           width, height, data,
+                                           color_mode,
+                                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
+                            if redos_len == len(redos):
+                                print_status(t, "No more redos.")
+                            else:
+                                clear_screen(t)
+                                refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
+                                print_status(t, "Redone.")
+                        case KeyActions.SELECT_TILES:
+                            if x < 0 or x > width - 1 or y < 0 or y > height - 1:
+                                print_status(t, "Out of range.")
+                            else:
+                                selecting = True
+                                select_pixels = False
+                                select_x = x
+                                select_y = y
+                                print_status(t, "Entered tiles selection mode.")
+                        case KeyActions.SELECT_PIXELS:
+                            selecting = True
+                            select_pixels = True
+                            select_x = x
+                            select_y = y
+                            print_status(t, "Entered pixels selection mode.")
+                        case KeyActions.PASTE:
+                            if clipboard != None:
+                                w, h = clipboard.get_dims()
+                                if clipboard.color_mode != color_mode and \
+                                   (clipboard.color_mode == ColorMode.DIRECT or
+                                    color_mode == ColorMode.DIRECT or
+                                    (clipboard.color_mode == ColorMode.C256 and
+                                     color_mode == ColorMode.C16 and
+                                     get_max_color(clipboard.colordata_fg_r, clipboard.colordata_bg_r) > 15)):
+                                    print_status(t, "Clipboard and current color modes are incompatible.")
+                                    continue
+
+                                # the width and height given by the clipboard are in character cells
+                                # so x and y need to be the top left of the character cell so the
+                                # area being undone is the correct size/position
+                                make_undo(undos, redos,
+                                          x // 2 * 2, y // 4 * 4, w * 2, h * 4, width, data,
+                                          color_mode,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
+                                # apply wants dimensions in character cells
+                                # this is normally abstracted
+                                clipboard.apply(width // 2, data,
+                                                colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                                colordata_bg_r, colordata_bg_g, colordata_bg_b,
+                                                x // 2, y // 4)
+                                refresh_matrix = (x, y, w * 2, h * 4)
+                                print_status(t, "Pasted.")
+                            else:
+                                print_status(t, "Clipboard is empty.")
+
+                if need_cont:
+                    # need to fully reinitialize the terminal state and redraw
+                    need_cont = False
+                    need_winch = False
+                    interrupted = False
                     clear_screen(t)
                     refresh_matrix = (0, 0, width, height)
-                case KeyActions.UNDO:
-                    undos_len = len(undos)
-                    undo_x, undo_y, undo_w, undo_h, \
-                        width, height, data, color_mode, \
-                        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
-                        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-                        apply_undo(undos, redos,
-                                   width, height, data,
-                                   color_mode,
-                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                    if undos_len == len(undos):
-                        print_status(t, "No more undos.")
-                    else:
-                        clear_screen(t)
-                        refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
-                        print_status(t, "Undid.")
-                case KeyActions.REDO:
-                    redos_len = len(redos)
-                    redo_x, redo_y, undo_w, undo_h, \
-                        width, height, data, color_mode, \
-                        colordata_fg_r, colordata_fg_g, colordata_fg_b, \
-                        colordata_bg_r, colordata_bg_g, colordata_bg_b = \
-                        apply_redo(undos, redos,
-                                   width, height, data,
-                                   color_mode,
-                                   colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                   colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                    if redos_len == len(redos):
-                        print_status(t, "No more redos.")
-                    else:
-                        clear_screen(t)
-                        refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
-                        print_status(t, "Redone.")
-                case KeyActions.SELECT_TILES:
-                    if x < 0 or x > width - 1 or y < 0 or y > height - 1:
-                        print_status(t, "Out of range.")
-                    else:
-                        selecting = True
-                        select_pixels = False
-                        select_x = x
-                        select_y = y
-                        print_status(t, "Entered tiles selection mode.")
-                case KeyActions.SELECT_PIXELS:
-                    selecting = True
-                    select_pixels = True
-                    select_x = x
-                    select_y = y
-                    print_status(t, "Entered pixels selection mode.")
-                case KeyActions.PASTE:
-                    if clipboard != None:
-                        w, h = clipboard.get_dims()
-                        if clipboard.color_mode != color_mode and \
-                           (clipboard.color_mode == ColorMode.DIRECT or
-                            color_mode == ColorMode.DIRECT or
-                            (clipboard.color_mode == ColorMode.C256 and
-                             color_mode == ColorMode.C16 and
-                             get_max_color(clipboard.colordata_fg_r, clipboard.colordata_bg_r) > 15)):
-                            print_status(t, "Clipboard and current color modes are incompatible.")
-                            continue
+                    # running is True so will loop back around
+                    break
+                elif need_winch:
+                    # need redraw
+                    need_winch = False
+                    interrupted = False
+                    clear_screen(t)
+                    refresh_matrix = (0, 0, width, height)
+                    continue
 
-                        # the width and height given by the clipboard are in character cells
-                        # so x and y need to be the top left of the character cell so the
-                        # area being undone is the correct size/position
-                        make_undo(undos, redos,
-                                  x // 2 * 2, y // 4 * 4, w * 2, h * 4, width, data,
-                                  color_mode,
-                                  colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                  colordata_bg_r, colordata_bg_g, colordata_bg_b)
-
-                        # apply wants dimensions in character cells
-                        # this is normally abstracted
-                        clipboard.apply(width // 2, data,
-                                        colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                        colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                        x // 2, y // 4)
-                        refresh_matrix = (x, y, w * 2, h * 4)
-                        print_status(t, "Pasted.")
-                    else:
-                        print_status(t, "Clipboard is empty.")
 
 if __name__ == '__main__':
     main()
