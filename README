@@ -14,80 +14,93 @@ previously created file.
 
 Keys:
 
-Shift+Q - quit
-Left Arrow, a - move left
-Right Arrow, d - move right
-Up Arrow, w - move up
-Down Arrow, s - move down
-Space - toggle pixel
-r - resize canvas
-g - toggle zoomed view grid
-z - toggle zoomed view color
-Shift+X - clear canvas
-Home, h - home position (0, 0)
-e - find nearest edge when off canvas
-Shift+M - change color mode (16, 256, DIRECT), clears canvas
-c - select foreground color
-Shift+C - select background color
-p - put color in 2x4 cell
-i - pick color from 2x4 cell
-Shift+S - save file
-Shift+R - redraw screen
-u - undo
-Shift+U - redo
-v - enter tiles selection mode
-Shift+V - enter pixels selection mode
-Shift+P - paste selection
+Main
+----
+Shift+Q: Quit
+LEFT, A: Move Left
+RIGHT, D: Move Right
+UP, W: Move Up
+DOWN, S: Move Down
+SPACE: Toggle Pixel
+R: Resize Image
+G: Toggle zoomed view grid
+Z: Toggle zoomed view color
+Shift+X: Clear Image
+HOME, H: Return to home position (0, 0)
+E: Find nearest edge from outside canvas
+Shift+M: Select color mode (16, 256, DIRECT RGB)
+C: Select foreground color
+Shift+C: Select background color
+P: Put color in to cell
+I: Pick color from cell
+Shift+S: Save
+Shift+R: Redraw Screen
+U: Undo
+Shift+U: Redo
+V: Tiles selection mode/functions
+Shift+V: Pixels selection mode/functions
+Shift+P: Paste from clipboard
+Shift+H: Print this help
 
-In tiles selection mode
-Left Arrow, a - move left
-Right Arrow, d - move right
-Up Arrow, w - move up
-Down Arrow, s - move down
-Escape - leave selection mode
-c - copy selection
-z - toggle zoomed view color
-f - Fill with current color
+Tiles Selection Mode
+--------------------
+LEFT, A: Move other corner left
+RIGHT, D: Move other corner right
+UP, W: Move other corner up
+DOWN, S: Move other corner down
+ESCAPE: Leave seleciton mode
+Z: Toggle zoomed view color
+C: Copy tiles to clipboard
+F: Fill tiles with selected color
 
-In pixels selection mode
-Left Arrow, a - move left
-Right Arrow, d - move right
-Up Arrow, w - move up
-Down Arrow, s - move down
-Escape - leave selection mode
-z - toggle zoomed view color
-o - pixel operation (set, clear, invert)
-m - tool mode (outline, fill)
-c - circle
-r - rectangle
+Pixels Selection Mode
+---------------------
+LEFT, A: Move other corner left
+RIGHT, D: Move other corner right
+UP, W: Move other corner up
+DOWN, S: Move other corner down
+ESCAPE: Leave seleciton mode
+Z: Toggle zoomed view color
+O: Cycle pixel operations (Set, Clear, Invert)
+M: Cycle cool modes (Outline, Fill)
+R: Draw a rectangle fit to the selection box
+C: Draw a circle fit to the selection box
 
-In palette selection screen:
-Arrows - move around
-Enter - select
-Escape - cancel
-t - select transparent (background only)
+Text Prompt
+-----------
+ENTER: Confirm entered text
+ESCAPE: Cancel entering text if applicable
+BACKSPACE: Delete last character
 
-In DIRECT mode selection screen:
-q - red +1
-w - green +1
-e - blue +1
-a - red -1
-s - green -1
-d - blue -1
-Shift+Q - red +10
-Shift+W - green +10
-Shift+E - blue +10
-Shift+A - red -10
-Shift+S - green -10
-Shift+D - blue -10
-Enter - select
-Escape - cancel
-t - select transparent (background only)
+RGB Color Selection
+-------------------
+ENTER: Confirm Selection
+ESCAPE: Cancel Selection and keep original color
+Q: Increase Red 1
+W: Increase Green 1
+E: Increase Blue 1
+A: Decrease Red 1
+S: Decrease Green 1
+D: Descrease Blue 1
+Shift+Q: Increase Red 10
+Shift+W: Increase Green 10
+Shift+E: Increase Blue 10
+Shift+A: Decrease Red 10
+Shift+S: Decrease Green 10
+Shift+D: Decrease Blue 10
+T: Select transparent color if applicable
 
-At any text prompt:
-Escape - cancel operation
-Enter - submit answer
-Backspace - backspace
+Palette Color Selection
+-----------------------
+ENTER: Confirm Selection
+ESCAPE: Leave seleciton mode
+LEFT, A: Move other corner left
+RIGHT, D: Move other corner right
+UP, W: Move other corner up
+DOWN, S: Move other corner down
+T: Select transparent color if applicable
+
+When selecting a color, transparency is only available for background colors.
 
 Known Bugs/Issues:
 The status/prompt lines don't clear.

@@ -16,7 +16,6 @@ import blessed
 # TODO: More selection functions.
 #         shift 1px - pixels
 # TODO: Maybe add preview viewport.
-# TODO: winch and cont signal
 # TODO: Various screen refresh bugs.
 
 # TODO: undo quirk undoing a color put on top row
@@ -31,6 +30,7 @@ DEFAULT_HEIGHT = 128
 ZOOMED_X = 4
 ZOOMED_PAD = 4
 PREVIEW_SPACING = 4
+FAST_COLOR_VALUE = 10
 PREVIEW_X = ZOOMED_X + (ZOOMED_PAD * 2 + 1) * 2 + PREVIEW_SPACING
 
 CHARS4 = array('w', ' 𜺨𜴀▘𜴉𜴊🯦𜴍𜺣𜴶𜴹𜴺▖𜵅𜵈▌𜺫🮂𜴁𜴂𜴋𜴌𜴎𜴏𜴷𜴸𜴻𜴼𜵆𜵇𜵉𜵊𜴃𜴄𜴆𜴇𜴐𜴑𜴔𜴕𜴽𜴾𜵁𜵂𜵋𜵌𜵎𜵏▝𜴅𜴈▀𜴒𜴓𜴖𜴗𜴿𜵀𜵃𜵄▞𜵍𜵐▛'
@@ -75,6 +75,7 @@ class KeyActions(Enum):
     CANCEL = auto()
     PASTE = auto()
     LINE = auto()
+    HELP = auto()
 
     # for prompt
     BACKSPACE = auto()
@@ -130,7 +131,36 @@ KEY_ACTIONS = {
     ord('U'): KeyActions.REDO,
     ord('v'): KeyActions.SELECT_TILES,
     ord('V'): KeyActions.SELECT_PIXELS,
-    ord('P'): KeyActions.PASTE
+    ord('P'): KeyActions.PASTE,
+    ord('H'): KeyActions.HELP
+}
+
+KEY_ACTIONS_DESCRIPTIONS = {
+    KeyActions.QUIT: "Quit",
+    KeyActions.MOVE_LEFT: "Move Left",
+    KeyActions.MOVE_RIGHT: "Move Right",
+    KeyActions.MOVE_UP: "Move Up",
+    KeyActions.MOVE_DOWN: "Move Down",
+    KeyActions.TOGGLE: "Toggle Pixel",
+    KeyActions.RESIZE: "Resize Image",
+    KeyActions.GRID: "Toggle zoomed view grid",
+    KeyActions.ZOOMED_COLOR: "Toggle zoomed view color",
+    KeyActions.CLEAR: "Clear Image",
+    KeyActions.HOME: "Return to home position (0, 0)",
+    KeyActions.EDGE: "Find nearest edge from outside canvas",
+    KeyActions.COLOR_MODE: "Select color mode (16, 256, DIRECT RGB)",
+    KeyActions.SELECT_FG_COLOR: "Select foreground color",
+    KeyActions.SELECT_BG_COLOR: "Select background color",
+    KeyActions.PUT_COLOR: "Put color in to cell",
+    KeyActions.PICK_COLOR: "Pick color from cell",
+    KeyActions.SAVE_FILE: "Save",
+    KeyActions.REDRAW: "Redraw Screen",
+    KeyActions.UNDO: "Undo",
+    KeyActions.REDO: "Redo",
+    KeyActions.SELECT_TILES: "Tiles selection mode/functions",
+    KeyActions.SELECT_PIXELS: "Pixels selection mode/functions",
+    KeyActions.PASTE: "Paste from clipboard",
+    KeyActions.HELP: "Print this help"
 }
 
 KEY_ACTIONS_SELECT_TILES = {
@@ -148,6 +178,17 @@ KEY_ACTIONS_SELECT_TILES = {
     ord('f'): KeyActions.RECT
 }
 
+KEY_ACTIONS_SELECT_TILES_DESCRIPTIONS = {
+    KeyActions.MOVE_LEFT: "Move other corner left",
+    KeyActions.MOVE_RIGHT: "Move other corner right",
+    KeyActions.MOVE_UP: "Move other corner up",
+    KeyActions.MOVE_DOWN: "Move other corner down",
+    KeyActions.CANCEL: "Leave seleciton mode",
+    KeyActions.ZOOMED_COLOR: "Toggle zoomed view color",
+    KeyActions.COPY: "Copy tiles to clipboard",
+    KeyActions.RECT: "Fill tiles with selected color"
+}
+
 KEY_ACTIONS_SELECT_PIXELS = {
     t.KEY_LEFT: KeyActions.MOVE_LEFT,
     t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
@@ -162,13 +203,32 @@ KEY_ACTIONS_SELECT_PIXELS = {
     ord('o'): KeyActions.OPERATION,
     ord('m'): KeyActions.TOOL_MODE,
     ord('r'): KeyActions.RECT,
-    ord('c'): KeyActions.CIRCLE,
+    ord('c'): KeyActions.CIRCLE
+}
+
+KEY_ACTIONS_SELECT_PIXELS_DESCRIPTIONS = {
+    KeyActions.MOVE_LEFT: "Move other corner left",
+    KeyActions.MOVE_RIGHT: "Move other corner right",
+    KeyActions.MOVE_UP: "Move other corner up",
+    KeyActions.MOVE_DOWN: "Move other corner down",
+    KeyActions.CANCEL: "Leave seleciton mode",
+    KeyActions.ZOOMED_COLOR: "Toggle zoomed view color",
+    KeyActions.OPERATION: "Cycle pixel operations (Set, Clear, Invert)",
+    KeyActions.TOOL_MODE: "Cycle cool modes (Outline, Fill)",
+    KeyActions.RECT: "Draw a rectangle fit to the selection box",
+    KeyActions.CIRCLE: "Draw a circle fit to the selection box"
 }
 
 KEY_ACTIONS_PROMPT = {
     t.KEY_ENTER: KeyActions.CONFIRM,
     t.KEY_ESCAPE: KeyActions.CANCEL,
     t.KEY_BACKSPACE: KeyActions.BACKSPACE
+}
+
+KEY_ACTIONS_PROMPT_DESCRIPTIONS = {
+    KeyActions.CONFIRM: "Confirm entered text",
+    KeyActions.CANCEL: "Cancel entering text if applicable",
+    KeyActions.BACKSPACE: "Delete last character"
 }
 
 KEY_ACTIONS_COLOR_RGB = {
@@ -189,6 +249,24 @@ KEY_ACTIONS_COLOR_RGB = {
     ord('t'): KeyActions.TRANSPARENT
 }
 
+KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS = {
+    KeyActions.CONFIRM: "Confirm Selection",
+    KeyActions.CANCEL: "Cancel Selection and keep original color",
+    KeyActions.INC_RED: "Increase Red 1",
+    KeyActions.INC_GREEN: "Increase Green 1",
+    KeyActions.INC_BLUE: "Increase Blue 1",
+    KeyActions.DEC_RED: "Decrease Red 1",
+    KeyActions.DEC_GREEN: "Decrease Green 1",
+    KeyActions.DEC_BLUE: "Descrease Blue 1",
+    KeyActions.INC_FAST_RED: f"Increase Red {FAST_COLOR_VALUE}",
+    KeyActions.INC_FAST_GREEN: f"Increase Green {FAST_COLOR_VALUE}",
+    KeyActions.INC_FAST_BLUE: f"Increase Blue {FAST_COLOR_VALUE}",
+    KeyActions.DEC_FAST_RED: f"Decrease Red {FAST_COLOR_VALUE}",
+    KeyActions.DEC_FAST_GREEN: f"Decrease Green {FAST_COLOR_VALUE}",
+    KeyActions.DEC_FAST_BLUE: f"Decrease Blue {FAST_COLOR_VALUE}",
+    KeyActions.TRANSPARENT: "Select transparent color if applicable"
+}
+
 KEY_ACTIONS_COLOR = {
     t.KEY_ENTER: KeyActions.CONFIRM,
     t.KEY_ESCAPE: KeyActions.CANCEL,
@@ -201,6 +279,26 @@ KEY_ACTIONS_COLOR = {
     ord('w'): KeyActions.MOVE_UP,
     ord('s'): KeyActions.MOVE_DOWN,
     ord('t'): KeyActions.TRANSPARENT
+}
+
+KEY_ACTIONS_COLOR_DESCRIPTIONS = {
+    KeyActions.MOVE_LEFT: "Move other corner left",
+    KeyActions.MOVE_RIGHT: "Move other corner right",
+    KeyActions.MOVE_UP: "Move other corner up",
+    KeyActions.MOVE_DOWN: "Move other corner down",
+    KeyActions.CONFIRM: "Confirm Selection",
+    KeyActions.CANCEL: "Leave seleciton mode",
+    KeyActions.TRANSPARENT: "Select transparent color if applicable"
+}
+
+HELPS = {
+    "Main": (KEY_ACTIONS, KEY_ACTIONS_DESCRIPTIONS, None),
+    "Tiles Selection Mode": (KEY_ACTIONS_SELECT_TILES, KEY_ACTIONS_SELECT_TILES_DESCRIPTIONS, None),
+    "Pixels Selection Mode": (KEY_ACTIONS_SELECT_PIXELS, KEY_ACTIONS_SELECT_PIXELS_DESCRIPTIONS, None),
+    "Text Prompt": (KEY_ACTIONS_PROMPT, KEY_ACTIONS_PROMPT_DESCRIPTIONS, None),
+    "RGB Color Selection": (KEY_ACTIONS_COLOR_RGB, KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS, None),
+    "Palette Color Selection": (KEY_ACTIONS_COLOR, KEY_ACTIONS_COLOR_DESCRIPTIONS,
+                                "When selecting a color, transparency is only available for background colors.")
 }
 
 def key_to_action(key_actions : dict[int, KeyActions], key : int) -> KeyActions:
@@ -1492,22 +1590,22 @@ def select_color_rgb(t : blessed.Terminal,
                 if b < 255:
                     b += 1
             case KeyActions.DEC_FAST_RED:
-                r -= 10
+                r -= FAST_COLOR_VALUE
                 r = max(0, r)
             case KeyActions.DEC_FAST_GREEN:
-                g -= 10
+                g -= FAST_COLOR_VALUE
                 g = max(0, g)
             case KeyActions.DEC_FAST_BLUE:
-                b -= 10
+                b -= FAST_COLOR_VALUE
                 b = max(0, b)
             case KeyActions.INC_FAST_RED:
-                r += 10
+                r += FAST_COLOR_VALUE
                 r = min(255, r)
             case KeyActions.INC_FAST_GREEN:
-                g += 10
+                g += FAST_COLOR_VALUE
                 g = min(255, g)
             case KeyActions.INC_FAST_BLUE:
-                b += 10
+                b += FAST_COLOR_VALUE
                 b = min(255, b)
             case KeyActions.TRANSPARENT:
                 if allow_transparent:
@@ -2460,6 +2558,50 @@ def draw_circle(data : array,
                 for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
                     data[y * dw + i] ^= 1
 
+def keycode_to_name(key):
+    if key == ord(' '):
+        return "SPACE"
+    elif key in t._keycodes:
+        return t._keycodes[key][4:]
+
+    key = chr(key)
+    if key.isupper():
+        return f"Shift+{key}"
+
+    return key.upper()
+
+def print_help(t):
+    for h in HELPS.keys():
+        print(h)
+        print(f"{'':-<{len(h)}}")
+
+        h = HELPS[h]
+        for key in h[0].keys():
+            action = h[0][key]
+            keys = []
+            for key2 in h[0].keys():
+                if h[0][key2] == action:
+                    if len(keys) == 0 and key2 != key:
+                        # detect if key has already been done
+                        break
+                    keys.append(key2)
+            if len(keys) == 0:
+                continue
+            for key in keys:
+                if key == keys[-1]:
+                    print(f"{keycode_to_name(key)}: ", end='')
+                else:
+                    print(f"{keycode_to_name(key)}, ", end='')
+            print(h[1][action])
+        print()
+        if h[2] is not None:
+            print(h[2])
+            print()
+
+    print("Press any key to return . . .")
+    with t.cbreak():
+        _ = t.inkey()
+
 def handler_winch(signum, frame):
     global need_winch
     global interrupted
@@ -2513,7 +2655,9 @@ def main():
     last_y : int = -1
     tool_operation : FillMode = FillMode.SET
     tool_mode : ToolMode = ToolMode.OUTLINE
-    running = True
+    running : bool = True
+    need_help : bool = False
+    first : bool = True
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -2576,7 +2720,11 @@ def main():
                                    width, data,
                                    colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                    colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                    print_status(t, "Ready.")
+                    if first:
+                        first = False
+                        print_status(t, "Ready. (Shift+H for Help)")
+                    else:
+                        print_status(t, "Ready.")
                     refresh_matrix = None
 
                 if selecting or cancel:
@@ -3158,6 +3306,9 @@ def main():
                                 print_status(t, "Pasted.")
                             else:
                                 print_status(t, "Clipboard is empty.")
+                        case KeyActions.HELP:
+                            need_help = True
+                            break
 
                 if need_cont:
                     # need to fully reinitialize the terminal state and redraw
@@ -3175,6 +3326,10 @@ def main():
                     clear_screen(t)
                     refresh_matrix = (0, 0, width, height)
                     continue
+
+        if need_help:
+            need_help = False
+            print_help(t)
 
 
 if __name__ == '__main__':
