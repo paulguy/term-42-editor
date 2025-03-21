@@ -15,6 +15,8 @@ import blessed
 # TODO: More selection functions.
 #         shift 1px - pixels
 # TODO: Maybe add preview viewport.
+# TODO: winch and cont signal
+# TODO: Various screen refresh bugs.
 
 # TODO: undo quirk undoing a color put on top row
 # TODO: another undo quirk with undoing pastes
@@ -2104,7 +2106,8 @@ def fill_circle(data : array,
         quarter : float = math.pi * 0.5
         points : int = w + h
         div : float = quarter / points
-        largest_x : float = 0.0
+        largest_x : float = -1.0
+        last_largest_x : float = -1.0
         last_y : int = 0
         bottom_offset : int = 0
         if h % 2 == 0:
@@ -2115,94 +2118,100 @@ def fill_circle(data : array,
 
         if mode == FillMode.SET:
             if h % 2 == 1:
-                if y >= 0 and y < dh:
-                    for j in range(max(0, int(hx - hw)), min(dw, int(hx + hw) + 1)):
-                        data[int(hy) * dw + j] = 1
+                if int(hy) >= 0 and int(hy) < dh:
+                    for i in range(max(0, int(hx - hw)), min(dw, int(hx + hw + 1))):
+                        data[int(hy) * dw + i] = 1
 
             for i in range(points + 1):
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py)
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
-                    # draw bottom
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[(int(hy + py) + bottom_offset) * dw + j] = 1
-                    # draw top
-                    ipy = int(hy - py)
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[int(hy - py) * dw + j] = 1
+                    if largest_x >= 0:
+                        # draw bottom
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy + py) - 1 + bottom_offset) * dw + j] = 1
+                        # draw top
+                        ipy = int(hy - py) + 1
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy - py) + 1) * dw + j] = 1
                     last_y = int(py)
+                    last_largest_x = largest_x
                     largest_x = px
-                    largest_x = px
+            # draw top and bottom lines
+            if y + h - 1 >= 0 and y + h - 1 < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[(y + h - 1) * dw + i] = 1
+            if y >= 0 and y < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[y * dw + i] = 1
         elif mode == FillMode.CLEAR:
             if h % 2 == 1:
-                if y >= 0 and y < dh:
-                    for j in range(max(0, int(hx - hw)), min(dw, int(hx + hw) + 1)):
-                        data[int(hy) * dw + j] = 0
+                if int(hy) >= 0 and int(hy) < dh:
+                    for i in range(max(0, int(hx - hw)), min(dw, int(hx + hw + 1))):
+                        data[int(hy) * dw + i] = 0
 
             for i in range(points + 1):
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py)
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
-                    # draw bottom
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[(int(hy + py) + bottom_offset) * dw + j] = 0
-                    # draw top
-                    ipy = int(hy - py)
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[int(hy - py) * dw + j] = 0
+                    if largest_x >= 0:
+                        # draw bottom
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy + py) - 1 + bottom_offset) * dw + j] = 0
+                        # draw top
+                        ipy = int(hy - py) + 1
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy - py) + 1) * dw + j] = 0
                     last_y = int(py)
+                    last_largest_x = largest_x
                     largest_x = px
-                    largest_x = px
+            # draw top and bottom lines
+            if y + h - 1 >= 0 and y + h - 1 < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[(y + h - 1) * dw + i] = 0
+            if y >= 0 and y < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[y * dw + i] = 0
         else: # invert
             if h % 2 == 1:
-                if y >= 0 and y < dh:
-                    for j in range(max(0, int(hx - hw)), min(dw, int(hx + hw) + 1)):
-                        data[int(hy) * dw + j] ^= 1
+                if int(hy) >= 0 and int(hy) < dh:
+                    for i in range(max(0, int(hx - hw)), min(dw, int(hx + hw + 1))):
+                        data[int(hy) * dw + i] ^= 1
 
             for i in range(points + 1):
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py)
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
-                    # draw bottom
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[(int(hy + py) + bottom_offset) * dw + j] ^= 1
-                    # draw top
-                    ipy = int(hy - py)
-                    if ipy >= 0 and ipy < dh:
-                        ipx1 : int = int(hx - largest_x)
-                        ipx2 : int = int(hx + largest_x)
-                        if ipx2 >= 0 and ipx1 < dw:
-                            for j in range(max(0, ipx1), min(dw, ipx2 + 1)):
-                                data[int(hy - py) * dw + j] ^= 1
+                    if largest_x >= 0:
+                        # draw bottom
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy + py) - 1 + bottom_offset) * dw + j] ^= 1
+                        # draw top
+                        ipy = int(hy - py) + 1
+                        if ipy >= 0 and ipy < dh:
+                            for j in range(max(0, int(hx - largest_x)), min(dw, int(hx + largest_x) + 1)):
+                                data[(int(hy - py) + 1) * dw + j] ^= 1
                     last_y = int(py)
+                    last_largest_x = largest_x
                     largest_x = px
-                    largest_x = px
+            # draw top and bottom lines
+            if y + h - 1 >= 0 and y + h - 1 < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[(y + h - 1) * dw + i] ^= 1
+            if y >= 0 and y < dh:
+                for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
+                    data[y * dw + i] ^= 1
 
 def draw_circle(data : array,
                 dw : int, dh : int,
@@ -2217,8 +2226,8 @@ def draw_circle(data : array,
         quarter : float = math.pi * 0.5
         points : int = w + h
         div : float = quarter / points
-        largest_x : float = -1
-        last_largest_x : float = -1
+        largest_x : float = -1.0
+        last_largest_x : float = -1.0
         last_y : int = 0
         bottom_offset : int = 0
         if h % 2 == 0:
@@ -2229,7 +2238,7 @@ def draw_circle(data : array,
 
         if mode == FillMode.SET:
             if h % 2 == 1:
-                if y >= 0 and y < dh:
+                if int(hy) >= 0 and int(hy) < dh:
                     if int(hx - hw) >= 0:
                         data[int(hy) * dw + int(hx - hw)] = 1
                     if int(hx + hw) < dw:
@@ -2239,7 +2248,7 @@ def draw_circle(data : array,
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py) - 1
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
                     if largest_x >= 0:
                         # draw bottom
@@ -2291,7 +2300,7 @@ def draw_circle(data : array,
                     data[y * dw + i] = 1
         elif mode == FillMode.CLEAR:
             if h % 2 == 1:
-                if y >= 0 and y < dh:
+                if int(hy) >= 0 and int(hy) < dh:
                     if int(hx - hw) >= 0:
                         data[int(hy) * dw + int(hx - hw)] = 0
                     if int(hx + hw) < dw:
@@ -2301,7 +2310,7 @@ def draw_circle(data : array,
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py) - 1
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
                     if largest_x >= 0:
                         # draw bottom
@@ -2353,7 +2362,7 @@ def draw_circle(data : array,
                     data[y * dw + i] = 0
         else:
             if h % 2 == 1:
-                if y >= 0 and y < dh:
+                if int(hy) >= 0 and int(hy) < dh:
                     if int(hx - hw) >= 0:
                         data[int(hy) * dw + int(hx - hw)] ^= 1
                     if int(hx + hw) < dw:
@@ -2363,7 +2372,7 @@ def draw_circle(data : array,
                 px = math.cos(div * i) * hw
                 py = math.sin(div * i) * hh
                 largest_x = max(px, largest_x)
-                ipy : int = int(hy + py) - 1
+                ipy : int = int(hy + py) - 1 + bottom_offset
                 if int(py) != last_y:
                     if largest_x >= 0:
                         # draw bottom
