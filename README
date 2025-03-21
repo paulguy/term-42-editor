@@ -56,10 +56,10 @@ Up Arrow, w - move up
 Down Arrow, s - move down
 Escape - leave selection mode
 z - toggle zoomed view color
-f - fill rectangle with foreground
-x - clear rectangle with background
-v - invert rectangle
-r - draw rectangle outline
+o - pixel operation (set, clear, invert)
+m - tool mode (outline, fill)
+c - circle
+r - rectangle
 
 In palette selection screen:
 Arrows - move around
