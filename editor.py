@@ -1464,6 +1464,7 @@ def print_status(t : blessed.Terminal, text : str, row : int = 0):
             print(t.normal, end='')
             print(t.reverse, end='')
         print(t.ljust(text), end='')
+        print(t.normal, end='')
  
 def prompt(t : blessed.Terminal,
            text : str):
