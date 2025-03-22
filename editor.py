@@ -15,8 +15,12 @@ import blessed
 # TODO: Add line and (maybe? probably not) flood fill.
 # TODO: More selection functions.
 #         shift 1px - pixels
+#         Maybe affine transforms?
 # TODO: Maybe add preview viewport.
 # TODO: Various screen refresh bugs.
+# TODO: Maybe revamped paste for affine pasting? also multiple named clipboards
+# TODO: Maybe replace foreground/background color
+# TODO: Save filename.
 
 # TODO: undo quirk undoing a color put on top row
 # TODO: another undo quirk with undoing pastes
