@@ -16,7 +16,7 @@ import blessed
 # TODO: More selection functions.
 #         shift 1px - pixels
 #         Maybe affine transforms?
-# TODO: Maybe add preview viewport.
+# TODO: Maybe add preview viewport. (probably not)
 # TODO: Various screen refresh bugs.
 # TODO: Maybe revamped paste for affine pasting? also multiple named clipboards
 # TODO: Maybe replace foreground/background color
@@ -1030,28 +1030,28 @@ def update_matrix_rect(term : Term,
                         if cbw == 1:
                             if bw == 1:
                                 print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                          sx1, sy1, False, False, False, True,
-                                                          sy2, sx2)], end='')
+                                                                sx1, sy1, False, False, False, True,
+                                                                sy2, sx2)], end='')
                             else:
                                 print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                          sx1, sy1, False, True, False, True,
-                                                          sy2, sx2)], end='')
+                                                                sx1, sy1, False, True, False, True,
+                                                                sy2, sx2)], end='')
                         else:
                             print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                      sx1, sy1, False, True, False, True,
-                                                      sy2)], end='')
+                                                            sx1, sy1, False, True, False, True,
+                                                            sy2)], end='')
                     else:
                         if cbw == 1:
                             if bw == 1:
                                 print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                          sx1, sy1, False, False, False, True)], end='')
+                                                                sx1, sy1, False, False, False, True)], end='')
                             else:
                                 print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                          sx1, sy1, False, True, False, True,
-                                                          3, 1)], end='')
+                                                                sx1, sy1, False, True, False, True,
+                                                                3, 1)], end='')
                         else:
                             print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                  sx1, sy1, False, True, False, True)], end='')
+                                                            sx1, sy1, False, True, False, True)], end='')
                 else:
                     print(CHARS4[make_cell(data, cbx * 2, cby * 4, dw)], end='')
             else:
@@ -1073,8 +1073,8 @@ def update_matrix_rect(term : Term,
                             term.send_fg(get_color(i, cby, cw,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
                             print(CHARS4[make_cell_inverted(data, i * 2, cby * 4, dw,
-                                                      0, sy1, True, True, False, False,
-                                                      sy2)], end='')
+                                                            0, sy1, True, True, False, False,
+                                                            sy2)], end='')
                     else:
                         for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
                             term.send_bg(get_color(i, cby, cw,
@@ -1082,7 +1082,7 @@ def update_matrix_rect(term : Term,
                             term.send_fg(get_color(i, cby, cw,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
                             print(CHARS4[make_cell_inverted(data, i * 2, cby * 4, dw,
-                                                      0, sy1, True, True, False, False)], end='')
+                                                            0, sy1, True, True, False, False)], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
                         term.send_bg(get_color(i, cby, cw,
@@ -1101,11 +1101,11 @@ def update_matrix_rect(term : Term,
                 if draw_box:
                     if cbh == 1:
                         print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
-                                                  sx2, sy1, True, False, False, True,
-                                                  sy2, sx2)], end='')
+                                                        sx2, sy1, True, False, False, True,
+                                                        sy2, sx2)], end='')
                     else:
                         print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
-                                                  sx2, sy1, True, False, False, True)], end='')
+                                                        sx2, sy1, True, False, False, True)], end='')
                 else:
                     print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, cby * 4, dw)], end='')
 
@@ -1124,15 +1124,15 @@ def update_matrix_rect(term : Term,
                     if cbw == 1:
                         if bw == 1:
                             print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
-                                                      sx1, sy2, False, False, True, False,
-                                                      4, sx2)], end='')
+                                                            sx1, sy2, False, False, True, False,
+                                                            4, sx2)], end='')
                         else:
                             print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
-                                                      sx1, sy2, True, True, True, False,
-                                                      sy2, sx2)], end='')
+                                                            sx1, sy2, True, True, True, False,
+                                                            sy2, sx2)], end='')
                     else:
                         print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
-                                                  sx1, sy2, False, True, True, False)], end='')
+                                                        sx1, sy2, False, True, True, False)], end='')
                 else:
                     print(CHARS4[make_cell(data, cbx * 2, (cby + cbh - 1) * 4, dw)], end='')
             else:
@@ -1153,7 +1153,7 @@ def update_matrix_rect(term : Term,
                         term.send_fg(get_color(i, cby + cbh - 1, cw,
                                                colordata_fg_r, colordata_fg_g, colordata_fg_b))
                         print(CHARS4[make_cell_inverted(data, i * 2, (cby + cbh - 1) * 4, dw,
-                                                  0, sy2, True, True, False, False)], end='')
+                                                        0, sy2, True, True, False, False)], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
                         term.send_bg(get_color(i, cby + cbh - 1, cw,
@@ -1171,7 +1171,7 @@ def update_matrix_rect(term : Term,
                                        colordata_fg_r, colordata_fg_g, colordata_fg_b))
                 if draw_box:
                     print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw,
-                                              sx2, sy2, True, False, True, False)], end='')
+                                                    sx2, sy2, True, False, True, False)], end='')
                 else:
                     print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw)], end='')
 
@@ -1180,24 +1180,42 @@ def update_matrix_rect(term : Term,
         if cbw == 1:
             if cbx >= cx and cbx < cx + w:
                 if bw == 1:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + cbx - cx, y + i)
-                        term.send_bg(get_color(cbx, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                  sx1, 0, False, False, True, True)], end='')
+                    if draw_box:
+                        for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                            term.send_pos(x + cbx - cx, y + i)
+                            term.send_bg(get_color(cbx, i, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(cbx, i, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                            sx1, 0, False, False, True, True)], end='')
+                    else:
+                        for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                            term.send_pos(x + cbx - cx, y + i)
+                            term.send_bg(get_color(cbx, i, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(cbx, i, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
                 else:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + cbx - cx, y + i)
-                        term.send_bg(get_color(cbx, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                  sx1, 0, True, True, True, True,
-                                                  3, 1)], end='')
+                    if draw_box:
+                        for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                            term.send_pos(x + cbx - cx, y + i)
+                            term.send_bg(get_color(cbx, i, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(cbx, i, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                            sx1, 0, True, True, True, True,
+                                                            3, 1)], end='')
+                    else:
+                        for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                            term.send_pos(x + cbx - cx, y + i)
+                            term.send_bg(get_color(cbx, i, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(cbx, i, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
         else:
             # left
             if cbx >= cx and cbx < cx + w:
@@ -1209,7 +1227,7 @@ def update_matrix_rect(term : Term,
                         term.send_fg(get_color(cbx, i, cw,
                                                colordata_fg_r, colordata_fg_g, colordata_fg_b))
                         print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                  sx1, 0, False, False, True, True)], end='')
+                                                        sx1, 0, False, False, True, True)], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         term.send_pos(x + cbx - cx, y + i)
@@ -1228,13 +1246,13 @@ def update_matrix_rect(term : Term,
                         term.send_fg(get_color(cbx + cbw - 1, i, cw,
                                                colordata_fg_r, colordata_fg_g, colordata_fg_b))
                         print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
-                                                  sx2, 0, False, False, True, True)], end='')
+                                                        sx2, 0, False, False, True, True)], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                         term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
-                        term.send_bg(get_color((cbx + cbw - 1) - cx, i, cw,
+                        term.send_bg(get_color(cbx + cbw - 1, i, cw,
                                                colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color((cbx + cbw - 1) - cx, i, cw,
+                        term.send_fg(get_color(cbx + cbw - 1, i, cw,
                                                colordata_fg_r, colordata_fg_g, colordata_fg_b))
                         print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)], end='')
 
