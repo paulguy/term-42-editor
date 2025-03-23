@@ -65,12 +65,21 @@ class Term():
         self.bg_g : int = -1
         self.bg_b : int = -1
         self.normal : bool = False
-        self.x : int = -1
-        self.y : int = -1
 
     def __init__(self, t : blessed.Terminal):
         self.t : blessed.Terminal = t
         self.reset()
+
+    def send_normal(self):
+        if not self.normal:
+            print(self.t.normal, end='')
+            self.normal = True
+            self.fg_r = -1
+            self.fg_g = -1
+            self.fg_b = -1
+            self.bg_r = -1
+            self.bg_g = -1
+            self.bg_b = -1
 
     def send_fg(self, r : int | tuple[int, int, int],
                       g : int = -1,
@@ -107,14 +116,7 @@ class Term():
 
         if g >= 0: # DIRECT color
             if not self.normal and r < 0:
-                print(self.t.normal, end='')
-                self.normal = True
-                self.fg_r = -1
-                self.fg_g = -1
-                self.fg_b = -1
-                self.bg_r = -1
-                self.bg_g = -1
-                self.bg_b = -1
+                self.send_normal()
             elif self.bg_r != r or \
                  self.bg_g != g or \
                  self.bg_b != b:
@@ -125,14 +127,7 @@ class Term():
                 self.bg_b = b
         else: # paletted color
             if not self.normal and r < 0:
-                print(self.t.normal, end='')
-                self.normal = True
-                self.fg_r = -1
-                self.fg_g = -1
-                self.fg_b = -1
-                self.bg_r = -1
-                self.bg_g = -1
-                self.bg_b = -1
+                self.send_normal()
             elif self.bg_r != r:
                 print(self.t.on_color(r), end='')
                 self.normal = False
@@ -140,21 +135,16 @@ class Term():
                 self.bg_g = -1
                 self.bg_b = -1
 
-    def send_pos(self, x : int | tuple[int, int],
-                       y : int = -1):
-        if isinstance(x, tuple):
-            y = x[1]
-            x = x[0]
-
-        if self.x != x or \
-           self.y != y:
-            print(self.t.move_xy(x, y), end='')
-            self.x = x
-            self.y = y
+    def send_pos(self, x : int, y : int):
+        print(self.t.move_xy(x, y), end='')
 
     def send_reverse(self):
         print(self.t.reverse, end='')
         self.normal = False
+
+    def clear(self):
+        self.send_normal()
+        print(self.t.clear, end='')
 
 class KeyActions(Enum):
     NONE = auto()
@@ -423,8 +413,8 @@ def key_to_action(key_actions : dict[int, KeyActions], key : int) -> KeyActions:
 DEFAULT_BG = 0 # BLACK
 DEFAULT_FG = 15 # WHITE
 COLORS = {
-    False: f"{t.color(DEFAULT_FG)}{t.on_color(DEFAULT_BG)}",
-    True:  f"{t.color(DEFAULT_BG)}{t.on_color(DEFAULT_FG)}"
+    False: (DEFAULT_BG, DEFAULT_FG),
+    True:  (DEFAULT_FG, DEFAULT_BG)
 }
 
 class FillMode(Enum):
@@ -603,7 +593,7 @@ TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "�
          "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰", "𜴳𜴳", "▐▌", "🯧𜴳", "𜴳🯦", "𜶖𜵈", "𜴡𜴍", "🯧🯦",
          "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜", "🯦🯧", "𜵲𜴶", " 🯧", "🯦 ", "𜺠𜺣", "𜺫𜺨", "  ")
 
-def display_zoomed_matrix(t : blessed.Terminal,
+def display_zoomed_matrix(term : Term,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
                           dw : int, dh : int,
@@ -626,28 +616,16 @@ def display_zoomed_matrix(t : blessed.Terminal,
     cy = dy // 4
     cw = dw // 2
 
-    lastcolor : str = ""
-
     if dy > dh:
         # if past the bottom, print normals
-        print(t.normal, end='')
+        term.send_normal()
 
     for iy in range(pad * 2 + 1):
-        print(t.move_xy(x, y + iy), end='')
+        term.send_pos(x, y + iy)
 
         if dx > dw:
             # if to the right print normals
-            print(t.normal, end='')
-            lastcolor = ""
-
-        lastcolor_r : int = -1
-        lastcolor_g : int = -1
-        lastcolor_b : int = -1
-        lastcolor_fg_r : int = -1
-        lastcolor_fg_g : int = -1
-        lastcolor_fg_b : int = -1
-        # only need R to determine transparency
-        lastcolor_bg_r : int = -1
+            term.send_normal()
 
         for ix in range(pad * 2 + 1):
             px = dx + ix
@@ -658,18 +636,15 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 # if above the top, print normals
                 if ix == 0 and iy == 0:
                     # only print the attribute once
-                    print(t.normal, end='')
-                    lastcolor = ""
+                    term.send_normal()
             elif px < 0:
                 # if to the left print normals
                 if ix == 0:
                     # only print once
-                    print(t.normal, end='')
-                    lastcolor = ""
+                    term.send_normal()
             elif px == dw:
                 # if to the right print normals
-                print(t.normal, end='')
-                lastcolor = ""
+                term.send_normal()
             elif px > dw:
                 # only print once
                 pass
@@ -677,8 +652,7 @@ def display_zoomed_matrix(t : blessed.Terminal,
                 # if past the bottom, print normals
                 if ix == 0:
                     # only print once
-                    print(t.normal, end='')
-                    lastcolor = ""
+                    term.send_normal()
             elif py > dh:
                 # only print once
                 pass
@@ -695,113 +669,63 @@ def display_zoomed_matrix(t : blessed.Terminal,
                                 color_r = colordata_fg_r[cw * ciy + cix]
                                 color_g = colordata_fg_g[cw * ciy + cix]
                                 color_b = colordata_fg_b[cw * ciy + cix]
-                                color_bg_r = colordata_bg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_g != lastcolor_g or \
-                                   color_b != lastcolor_b or \
-                                   color_bg_r != lastcolor_bg_r:
-                                    if color_bg_r < 0:
-                                        # backgrond is still transparent
-                                        print(t.normal, end='')
-                                        # set foreground color but select inverted tiles
-                                        print(t.color_rgb(color_r, color_g, color_b), end='')
-                                    else:
-                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                        print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                          max(0, 255 - color_g - 64),
-                                                          max(0, 255 - color_b - 64)), end='')
-                                    lastcolor_bg_r = color_bg_r
-                                    lastcolor_fg_r = color_r
-                                    lastcolor_fg_g = color_g
-                                    lastcolor_fg_b = color_b
-                                    lastcolor_r = color_r
-                                    lastcolor_g = color_g
-                                    lastcolor_b = color_b
-                                    lastcolor = "#"  # Tag with some non-empty string
-                                if lastcolor_bg_r < 0:
+                                if colordata_bg_r[cw * ciy + cix] < 0:
+                                    # backgrond is transparent
+                                    term.send_normal()
+                                    # set foreground color but select inverted tiles
+                                    term.send_fg(color_r, color_g, color_b)
                                     tile += TILE_INVERT
+                                else:
+                                    term.send_bg(color_r, color_g, color_b)
+                                    term.send.fg(max(0, 255 - color_r - 64),
+                                                 max(0, 255 - color_g - 64),
+                                                 max(0, 255 - color_b - 64))
                             else:
-                                # pixel off (background)
                                 color_r = colordata_bg_r[cw * ciy + cix]
                                 color_g = colordata_bg_g[cw * ciy + cix]
                                 color_b = colordata_bg_b[cw * ciy + cix]
-                                color_fg_r = colordata_fg_r[cw * ciy + cix]
-                                color_fg_g = colordata_fg_g[cw * ciy + cix]
-                                color_fg_b = colordata_fg_b[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_g != lastcolor_g or \
-                                   color_b != lastcolor_b or \
-                                   (color_r < 0 and (color_fg_r != lastcolor_fg_r or
-                                                     color_fg_g != lastcolor_fg_g or
-                                                     color_fg_b != lastcolor_fg_b)):
-                                    if color_r < 0:
-                                        # transition to transparent background
-                                        print(t.normal, end='')
-                                        # set foreground
-                                        print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
-                                    else:
-                                        print(t.on_color_rgb(color_r, color_g, color_b), end='')
-                                        print(t.color_rgb(max(0, 255 - color_r - 64),
-                                                          max(0, 255 - color_g - 64),
-                                                          max(0, 255 - color_b - 64)), end='')
-                                    lastcolor_bg_r = color_r
-                                    lastcolor_fg_r = color_fg_r
-                                    lastcolor_fg_g = color_fg_g
-                                    lastcolor_fg_b = color_fg_b
-                                    lastcolor_r = color_r
-                                    lastcolor_g = color_g
-                                    lastcolor_b = color_b
-                                    lastcolor = "#"  # Tag with some non-empty string
+                                if color_r < 0:
+                                    # backgrond is transparent
+                                    term.send_normal()
+                                    # set foreground
+                                    term.send_fg(colordata_fg_r[cw * ciy + cix],
+                                                 colordata_fg_g[cw * ciy + cix],
+                                                 colordata_fg_b[cw * ciy + cix])
+                                else:
+                                    term.send_bg(color_r, color_g, color_b)
+                                    term.send_fg(max(0, 255 - color_r - 64),
+                                                 max(0, 255 - color_g - 64),
+                                                 max(0, 255 - color_b - 64))
                         else:
                             if data[dw * py + px]:
                                 # pixel on (foreground)
                                 color_r = colordata_fg_r[cw * ciy + cix]
-                                color_bg_r = colordata_bg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   color_bg_r != lastcolor_bg_r:
-                                    if color_bg_r < 0:
-                                        print(t.normal, end='')
-                                        print(t.color(color_r), end='')
-                                    else:
-                                        print(t.on_color(color_r), end='')
-                                        if color_r == DEFAULT_BG:
-                                            print(t.color(DEFAULT_FG), end='')
-                                        else:
-                                            print(t.color(DEFAULT_BG), end='')
-                                    lastcolor_bg_r = color_bg_r
-                                    lastcolor_fg_r = color_r
-                                    lastcolor_r = color_r
-                                    lastcolor = "#"  # Tag with some non-empty string
-                                if lastcolor_bg_r < 0:
+                                if colordata_bg_r[cw * ciy + cix] < 0:
+                                    term.send_normal()
+                                    term.send_fg(color_r)
                                     tile += TILE_INVERT
+                                else:
+                                    term.send_bg(color_r)
+                                    if color_r == DEFAULT_BG:
+                                        term.send_fg(DEFAULT_FG)
+                                    else:
+                                        term.send_fg(DEFAULT_BG)
                             else:
                                 # pixel off (background)
                                 color_r = colordata_bg_r[cw * ciy + cix]
-                                color_fg_r = colordata_fg_r[cw * ciy + cix]
-                                if len(lastcolor) == 0 or \
-                                   color_r != lastcolor_r or \
-                                   (color_r < 0 and color_fg_r != lastcolor_fg_r):
-                                    if color_r < 0:
-                                        print(t.normal, end='')
-                                        print(t.color(color_fg_r), end='')
+                                if color_r < 0:
+                                    term.send_normal()
+                                    term.send_fg(colordata_fg_r[cw * ciy + cix])
+                                else:
+                                    term.send_bg(color_r)
+                                    if color_r == DEFAULT_BG:
+                                        term.send_fg(DEFAULT_FG)
                                     else:
-                                        print(t.on_color(color_r), end='')
-                                        if color_r == DEFAULT_BG:
-                                            print(t.color(DEFAULT_FG), end='')
-                                        else:
-                                            print(t.color(DEFAULT_BG), end='')
-                                    lastcolor_bg_r = color_r
-                                    lastcolor_fg_r = color_fg_r
-                                    lastcolor_r = color_r
-                                    lastcolor = "#"  # Tag with some non-empty string
+                                        term.send_fg(DEFAULT_BG)
                     else:
                         color = colors[data[dw * py + px]]
-                        if color != lastcolor:
-                            print(color, end='')
-                        lastcolor = color
+                        term.send_bg(colors[0])
+                        term.send_fg(colors[1])
 
                     if selecting:
                         sx1 = min(dx + pad, select_x)
@@ -989,7 +913,7 @@ def make_cell(data : array, dx : int, dy : int, dw : int):
 
     return cell
  
-def display_matrix(t : blessed.Terminal,
+def display_matrix(term : Term,
                    color_mode : ColorMode,
                    x : int, y : int,
                    w : int, h : int,
@@ -1004,118 +928,23 @@ def display_matrix(t : blessed.Terminal,
     # get width in cells for colordata lookup
     cw = dw // 2
 
-    if color_mode == ColorMode.DIRECT:
-        lastcolor_fg_r = colordata_fg_r[cy * cw + cx]
-        lastcolor_fg_g = colordata_fg_g[cy * cw + cx]
-        lastcolor_fg_b = colordata_fg_b[cy * cw + cx]
-        lastcolor_bg_r = colordata_bg_r[cy * cw + cx]
-        lastcolor_bg_g = colordata_bg_g[cy * cw + cx]
-        lastcolor_bg_b = colordata_bg_b[cy * cw + cx]
-        if lastcolor_bg_r < 0:
-            print(t.normal, end='')
-        else:
-            print(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b), end='')
-        print(t.color_rgb(lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b), end='')
-    else:
-        lastcolor_fg_r = colordata_fg_r[cy * cw + cx]
-        lastcolor_bg_r = colordata_bg_r[cy * cw + cx]
-        if lastcolor_bg_r < 0:
-            print(t.normal, end='')
-        else:
-            print(t.on_color(lastcolor_bg_r), end='')
-        print(t.color(lastcolor_fg_r), end='')
-
     # start at requested data start and clamp to wanted end or the actual data array dimensions
     for iy in range(cy, min(cy + h, len(colordata_fg_r) // cw)):
         # subtract range start here.  it's simpler than adding it everywhere else
-        print(t.move_xy(x + cx, y + iy), end='')
+        term.send_pos(x + cx, y + iy)
         for ix in range(cx, min(cx + w, cw)):
-            if color_mode == ColorMode.DIRECT:
-                color_fg_r = colordata_fg_r[iy * cw + ix]
-                color_fg_g = colordata_fg_g[iy * cw + ix]
-                color_fg_b = colordata_fg_b[iy * cw + ix]
-                color_bg_r = colordata_bg_r[iy * cw + ix]
-                color_bg_g = colordata_bg_g[iy * cw + ix]
-                color_bg_b = colordata_bg_b[iy * cw + ix]
-                if color_bg_r != lastcolor_bg_r or \
-                   color_bg_g != lastcolor_bg_g or \
-                   color_bg_b != lastcolor_bg_b:
-                    if color_bg_r < 0:
-                        print(t.normal, end='')
-                        # fg color gets unset, so assure it'll always
-                        # think it's changed and needs to be retransmitted
-                        lastcolor_fg_r = -1
-                    else:
-                        print(t.on_color_rgb(color_bg_r, color_bg_g, color_bg_b), end='')
-                    lastcolor_bg_r = color_bg_r
-                    lastcolor_bg_g = color_bg_g
-                    lastcolor_bg_b = color_bg_b
-                if color_fg_r != lastcolor_fg_r or \
-                   color_fg_g != lastcolor_fg_g or \
-                   color_fg_b != lastcolor_fg_b:
-                    print(t.color_rgb(color_fg_r, color_fg_g, color_fg_b), end='')
-                    lastcolor_fg_r = color_fg_r
-                    lastcolor_fg_g = color_fg_g
-                    lastcolor_fg_b = color_fg_b
+            color_bg_r = colordata_bg_r[iy * cw + ix]
+            if color_bg_r < 0:
+                term.send_normal()
             else:
-                # paletted modes use the R channel for color value
-                color_fg_r = colordata_fg_r[iy * cw + ix]
-                color_bg_r = colordata_bg_r[iy * cw + ix]
-                if color_bg_r != lastcolor_bg_r:
-                    if color_bg_r < 0:
-                        print(t.normal, end='')
-                        lastcolor_fg_r = -1
-                    else:
-                        print(t.on_color(color_bg_r), end='')
-                    lastcolor_bg_r = color_bg_r
-                if color_fg_r != lastcolor_fg_r:
-                    print(t.color(color_fg_r), end='')
-                    lastcolor_fg_r = color_fg_r
+                term.send_bg(color_bg_r,
+                             colordata_bg_g[iy * cw + ix],
+                             colordata_bg_b[iy * cw + ix])
+            term.send_fg(colordata_fg_r[iy * cw + ix],
+                         colordata_fg_g[iy * cw + ix],
+                         colordata_fg_b[iy * cw + ix])
 
-            cell = make_cell(data, ix * 2, iy * 4, dw)
-            print(CHARS4[cell], end='')
-
-def update_matrix(t : blessed.Terminal,
-                  color_mode : ColorMode,
-                  x : int, y : int,
-                  dx : int, dy : int,
-                  dw : int, data : array,
-                  colordata_fg_r : array,
-                  colordata_fg_g : array,
-                  colordata_fg_b : array,
-                  colordata_bg_r : array,
-                  colordata_bg_g : array,
-                  colordata_bg_b : array):
-    # largely the same function as above, but for 1 character
-
-    dx = dx // 2 * 2
-    dy = dy // 4 * 4
-    cx = dx // 2
-    cy = dy // 4
-    cw = dw // 2
-
-    bg_r = colordata_bg_r[cy * cw + cx]
-    if color_mode == ColorMode.DIRECT:
-        if bg_r < 0:
-            print(t.normal, end='')
-        else:
-            print(t.on_color_rgb(bg_r,
-                                 colordata_bg_g[cy * cw + cx],
-                                 colordata_bg_b[cy * cw + cx]), end='')
-        print(t.color_rgb(colordata_fg_r[cy * cw + cx],
-                          colordata_fg_g[cy * cw + cx],
-                          colordata_fg_b[cy * cw + cx]), end='')
-    else:
-        # paletted modes use the R channel for color value
-        if bg_r < 0:
-            print(t.normal, end='')
-        else:
-            print(t.on_color(colordata_bg_r[cy * cw + cx]), end='')
-        print(t.color(colordata_fg_r[cy * cw + cx]), end='')
-
-    print(t.move_xy(x + cx, y + cy), end='')
-    cell = make_cell(data, dx, dy, dw)
-    print(CHARS4[cell], end='')
+            print(CHARS4[make_cell(data, ix * 2, iy * 4, dw)], end='')
 
 def pixels_to_occupied_wh(x : int, y : int, w : int, h : int):
     # convert from pixels to character cells which the dimensions occupy
@@ -1182,10 +1011,6 @@ def update_matrix_rect(term : Term,
     if cby + cbh - 1 >= ch:
         cbh = ch - cby
         sy2 = 3
-
-    # TODO for now
-    print(t.normal)
-    term.reset()
 
     if cbx < cx + w and cbx + cbw - 1 >= cx:
         # if the box isn't totally off a side
@@ -1429,22 +1254,20 @@ def inkey_numeric(t : blessed.Terminal):
 
     return True, ord(key)
 
-def print_status(t : blessed.Terminal, text : str, row : int = 0):
+def print_status(term : Term, text : str, row : int = 0):
     global interrupted
 
     if not interrupted:
-        print(t.move_xy(0, row), end='')
+        term.send_pos(0, row)
+        term.send_normal()
         if row == 0:
-            print(t.normal, end='')
-            print(t.on_color(4), end='')
-            print(t.color(11), end='')
+            term.send_bg(4)
+            term.send_fg(11)
         else:
-            print(t.normal, end='')
-            print(t.reverse, end='')
-        print(t.ljust(text), end='')
-        print(t.normal, end='')
+            term.send_reverse()
+        print(term.t.ljust(text), end='')
  
-def prompt(t : blessed.Terminal,
+def prompt(term : Term,
            text : str):
     global interrupted
 
@@ -1452,10 +1275,10 @@ def prompt(t : blessed.Terminal,
         return None
     inp = array('w')
 
-    print_status(t, text)
+    print_status(term, text)
     # clear second line
-    print_status(t, "", 1)
-    print(t.move_xy(0, 1), end='')
+    print_status(term, "", 1)
+    term.send_pos(0, 1)
     sys.stdout.flush()
     while True:
         is_text, key = inkey_numeric(t)
@@ -1476,20 +1299,21 @@ def prompt(t : blessed.Terminal,
                     if len(inp) > 0:
                         # not ideal, but fullscreen mode seems to have limitations?
                         inp = inp[:-1]
-                        print(t.move_xy(0, 1), end='')
-                        print_status(t, "", 1)
-                        print(t.move_xy(0, 1), end='')
+                        print_status(term, "", 1)
+                        term.send_pos(0, 1)
                         print(inp.tounicode(), end='')
         sys.stdout.flush()
-    print(t.normal, end='')
+    term.send_normal()
 
     return inp.tounicode()
 
-def prompt_yn(t : blessed.Terminal, text : str, default : bool = False) -> bool:
+def prompt_yn(term : Term,
+              text : str,
+              default : bool = False) -> bool:
     if default:
-        ans = prompt(t, f"{text} ([Y]/n)")
+        ans = prompt(term, f"{text} ([Y]/n)")
     else:
-        ans = prompt(t, f"{text} (y/[N])")
+        ans = prompt(term, f"{text} (y/[N])")
 
     if ans is None or len(ans) == 0:
         # interruption will return default!
@@ -1506,11 +1330,7 @@ def prompt_yn(t : blessed.Terminal, text : str, default : bool = False) -> bool:
 
     return False
 
-def clear_screen(t : blessed.Terminal):
-    print(t.normal, end='')
-    print(t.clear, end='')
-
-def select_color_rgb(t : blessed.Terminal,
+def select_color_rgb(term : Term,
                      r : int, g : int, b : int,
                      allow_transparent : bool):
     global interrupted
@@ -1522,18 +1342,18 @@ def select_color_rgb(t : blessed.Terminal,
         r = 0
         g = 0
         b = 0
-    clear_screen(t)
+    term.clear()
 
     while True:
-        print(t.normal, end='')
-        print(t.move_xy(0, 0), end='')
+        term.send_normal()
+        term.send_pos(0, 0)
         print(r, end='')
-        print(t.move_xy(4, 0), end='')
+        term.send_pos(4, 0)
         print(g, end='')
-        print(t.move_xy(8, 0), end='')
+        term.send_pos(8, 0)
         print(b, end='')
-        print(t.move_xy(6, 1), end='')
-        print(t.color_rgb(r, g, b), end='')
+        term.send_pos(6, 1)
+        term.send_fg(r, g, b)
         print(BLOCK, end='')
         sys.stdout.flush()
 
@@ -1597,10 +1417,10 @@ def select_color_rgb(t : blessed.Terminal,
                     b = -1
                     break
 
-    clear_screen(t)
+    term.clear()
     return r, g, b
 
-def select_color(t : blessed.Terminal,
+def select_color(term : Term,
                  c : int, color_mode : ColorMode,
                  allow_transparent : bool):
     global interrupted
@@ -1616,22 +1436,22 @@ def select_color(t : blessed.Terminal,
         x = c % width
         y = c // width
 
-    clear_screen(t)
+    term.clear()
 
     while True:
-        print(t.color(DEFAULT_BG), end='')
+        term.send_fg(DEFAULT_BG)
         for cy in range(height):
-            print(t.move_xy(0, cy), end='')
+            term.send_pos(0, cy)
             for cx in range(width):
-                print(t.on_color(cy * width + cx), end='')
+                term.send_bg(cy * width + cx)
                 print("  ", end='')
 
-        print(t.move_xy(x * 2, y), end='')
+        term.send_pos(x * 2, y)
         if x == 0 and y == 0:
-            print(t.color(DEFAULT_FG), end='')
+            term.send_fg(DEFAULT_FG)
         else:
-            print(t.color(DEFAULT_BG), end='')
-        print(t.on_color(y * width + x), end='')
+            term.send_fg(DEFAULT_BG)
+        term.send_bg(y * width + x)
         print(CURSOR, end='')
         sys.stdout.flush()
         _, key = inkey_numeric(t)
@@ -1662,7 +1482,7 @@ def select_color(t : blessed.Terminal,
                     c = -1
                     break
 
-    clear_screen(t)
+    term.clear()
     return c
 
 def get_default_colors(color_mode : ColorMode):
@@ -1671,15 +1491,6 @@ def get_default_colors(color_mode : ColorMode):
         return 255, 255, 255, -1, -1, -1
 
     return DEFAULT_FG, -1, -1, -1, -1, -1
-
-def get_color_str(t : blessed.Terminal,
-                  color_mode : ColorMode,
-                  fg_r : int, fg_g : int, fg_b : int,
-                  bg_r : int, bg_g : int, bg_b : int):
-    if color_mode == ColorMode.DIRECT:
-        return f"{t.on_color_rgb(bg_r, bg_g, bg_b)}{t.color_rgb(fg_r, fg_g, fg_b)}"
-
-    return f"{t.on_color(bg_r)}{t.color(fg_r)}"
 
 def new_color_data(color_mode : ColorMode, width : int, height : int):
     temp_fg_r, temp_fg_g, temp_fg_b, temp_bg_r, temp_bg_g, temp_bg_b = get_default_colors(color_mode)
@@ -2624,7 +2435,6 @@ def main():
     bg_r : int = 0
     bg_g : int = 0
     bg_b : int = 0
-    color_str : str = None
     refresh_matrix : None | tuple[int] = None
     undos : list[None | DataRect] = []
     redos : list[None | DataRect] = []
@@ -2667,8 +2477,6 @@ def main():
 
     fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
 
-    color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
-
     #global logfile
     #logfile = open("log.txt", 'w')
 
@@ -2683,16 +2491,18 @@ def main():
         refresh_matrix = (0, 0, width, height)
 
         with t.cbreak(), t.fullscreen(), t.hidden_cursor():
+            term.send_normal()
+
             while True:
                 if refresh_matrix is not None:
-                    print(t.normal, end='')
+                    term.send_normal()
                     for i in range(height // 4):
-                        print(t.move_xy(PREVIEW_X - 1, 2 + i), end='')
+                        term.send_pos(PREVIEW_X - 1, 2 + i)
                         print(TILES[TILE_RIGHT][1], end='')
                     for i in range(height // 4):
-                        print(t.move_xy(PREVIEW_X + width // 2, 2 + i), end='')
+                        term.send_pos(PREVIEW_X + (width // 2), 2 + i)
                         print(TILES[TILE_LEFT][0], end='')
-                    print(t.move_xy(PREVIEW_X - 1, 2 + (height // 4)), end='')
+                    term.send_pos(PREVIEW_X - 1, 2 + (height // 4))
                     print(TILES[TILE_CORNER_TOPRIGHT][1], end='')
                     for i in range(width // 2):
                         print(TILES[TILE_TOP][0], end='')
@@ -2701,15 +2511,15 @@ def main():
                     cw, ch = pixels_to_occupied_wh(refresh_matrix[0], refresh_matrix[1], refresh_matrix[2], refresh_matrix[3])
                     cx = refresh_matrix[0] // 2
                     cy = refresh_matrix[1] // 4
-                    display_matrix(t, color_mode, PREVIEW_X, 2, cw, ch, cx, cy,
+                    display_matrix(term, color_mode, PREVIEW_X, 2, cw, ch, cx, cy,
                                    width, data,
                                    colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                    colordata_bg_r, colordata_bg_g, colordata_bg_b)
                     if first:
                         first = False
-                        print_status(t, "Ready. (Shift+H for Help)")
+                        print_status(term, "Ready. (Shift+H for Help)")
                     else:
-                        print_status(t, "Ready.")
+                        print_status(term, "Ready.")
                     refresh_matrix = None
 
                 if selecting or cancel:
@@ -2743,7 +2553,7 @@ def main():
                     else:
                         selecting = False
                         cancel = False
-                        print_status(t, "Left selection mode.")
+                        print_status(term, "Left selection mode.")
 
                 if not selecting:
                     # draw cursor
@@ -2756,10 +2566,11 @@ def main():
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
 
-                print(t.move_xy(0, 2), end='')
-                print(color_str, end='')
+                term.send_pos(0, 2)
+                term.send_bg(bg_r, bg_g, bg_b)
+                term.send_fg(fg_r, fg_g, fg_b)
                 print("𜶉𜶉", end='')
-                display_zoomed_matrix(t, ZOOMED_X, 2, ZOOMED_PAD,
+                display_zoomed_matrix(term, ZOOMED_X, 2, ZOOMED_PAD,
                                       x, y, width, height,
                                       selecting, select_x, select_y,
                                       COLORS, grid, zoomed_color,
@@ -2775,12 +2586,13 @@ def main():
                     bgstr = "Transparent"
                     if bg_r >= 0:
                         bgstr = f"{bg_r} {bg_g} {bg_b}"
-                    print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
+                    print_status(term, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r} {fg_g} {fg_b}  {bgstr}", 1)
                 else:
                     bgstr = "Transparent"
                     if bg_r >= 0:
                         bgstr = f"{bg_r}"
-                    print_status(t, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r}  {bgstr}", 1)
+                    print_status(term, f"{color_mode.name} {disp_x}, {disp_y}  {fg_r}  {bgstr}", 1)
+                term.send_normal() # undo reverse
 
                 sys.stdout.flush()
                 _, key = inkey_numeric(t)
@@ -2805,9 +2617,9 @@ def main():
                                 case KeyActions.ZOOMED_COLOR:
                                     zoomed_color = not zoomed_color
                                     if zoomed_color:
-                                        print_status(t, f"Zoomed view color toggled on.")
+                                        print_status(term, f"Zoomed view color toggled on.")
                                     else:
-                                        print_status(t, f"Zoomed view color toggled off.")
+                                        print_status(term, f"Zoomed view color toggled off.")
                                 case KeyActions.COPY:
                                     bx, by, bw, bh = get_xywh(x, y,
                                                               select_x, select_y,
@@ -2817,7 +2629,7 @@ def main():
                                                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
                                     #print_status(t, f"Copied. {sx1} {sy1} {sx2} {sy2} {cw} {ch} {clipboard.get_dims()}")
-                                    print_status(t, f"Copied.")
+                                    print_status(term, f"Copied.")
                                 case KeyActions.RECT:
                                     bx, by, bw, bh = get_xywh(x, y,
                                                               select_x, select_y,
@@ -2850,7 +2662,7 @@ def main():
                                                       select_x, select_y,
                                                       width, height)
                             bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                            print_status(t, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
+                            print_status(term, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
                         else: # pixels selection
                             key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                             match key:
@@ -2867,9 +2679,9 @@ def main():
                                 case KeyActions.ZOOMED_COLOR:
                                     zoomed_color = not zoomed_color
                                     if zoomed_color:
-                                        print_status(t, f"Zoomed view color toggled on.")
+                                        print_status(term, f"Zoomed view color toggled on.")
                                     else:
-                                        print_status(t, f"Zoomed view color toggled off.")
+                                        print_status(term, f"Zoomed view color toggled off.")
                                 case KeyActions.OPERATION:
                                     tool_operation = FILL_MODE_CYCLE[tool_operation]
                                 case KeyActions.TOOL_MODE:
@@ -2929,16 +2741,16 @@ def main():
                                 tool_operation_str = "Clear"
                             elif tool_operation == FillMode.INVERT:
                                 tool_operation_str = "Invert"
-                            print_status(t, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
+                            print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
 
                         continue
 
                     key = key_to_action(KEY_ACTIONS, key)
                     match key:
                         case KeyActions.QUIT:
-                            ans = prompt_yn(t, "Quit?")
+                            ans = prompt_yn(term, "Quit?")
                             if not ans:
-                                print_status(t, "Returned.")
+                                print_status(term, "Returned.")
                             else:
                                 running = False
                                 break
@@ -2959,34 +2771,31 @@ def main():
                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
                                 data[width * y + x] = not data[width * y + x]
-                                update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
-                                              colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                              colordata_bg_r, colordata_bg_g, colordata_bg_b)
                         case KeyActions.RESIZE:
-                            newwidth = prompt(t, "New Width?")
+                            newwidth = prompt(term, "New Width?")
                             if newwidth is None:
                                 continue
                             try:
                                 newwidth = int(newwidth)
                             except ValueError:
-                                print_status(t, "Width must be an integer.")
+                                print_status(term, "Width must be an integer.")
                                 continue
                             if newwidth < 2 or newwidth % 2 != 0:
-                                print_status(t, "Width must be non-zero and divisible by 2.")
+                                print_status(term, "Width must be non-zero and divisible by 2.")
                                 continue
-                            newheight = prompt(t, "New Height?")
+                            newheight = prompt(term, "New Height?")
                             if newheight is None:
                                 continue
                             try:
                                 newheight = int(newheight)
                             except ValueError:
-                                print_status(t, "Height must be an integer.")
+                                print_status(term, "Height must be an integer.")
                                 continue
                             if newheight < 4 or newheight % 4 != 0:
-                                print_status(t, "Height must be non-zero and divisible by 4.")
+                                print_status(term, "Height must be non-zero and divisible by 4.")
                                 continue
                             if newwidth == width and newheight == height:
-                                print_status(t, "New width and height are the same.")
+                                print_status(term, "New width and height are the same.")
                                 continue
 
                             make_undo(undos, redos,
@@ -3027,23 +2836,23 @@ def main():
                             height = newheight
                             x = min(x, width)
                             y = min(y, height)
-                            clear_screen(t)
+                            term.clear()
                             refresh_matrix = (0, 0, width, height)
-                            print_status(t, f"Image resized to {width}, {height}.")
+                            print_status(term, f"Image resized to {width}, {height}.")
                         case KeyActions.GRID:
                             grid = not grid
                             if grid:
-                                print_status(t, f"Grid toggled on.")
+                                print_status(term, f"Grid toggled on.")
                             else:
-                                print_status(t, f"Grid toggled off.")
+                                print_status(term, f"Grid toggled off.")
                         case KeyActions.ZOOMED_COLOR:
                             zoomed_color = not zoomed_color
                             if zoomed_color:
-                                print_status(t, f"Zoomed view color toggled on.")
+                                print_status(term, f"Zoomed view color toggled on.")
                             else:
-                                print_status(t, f"Zoomed view color toggled off.")
+                                print_status(term, f"Zoomed view color toggled off.")
                         case KeyActions.CLEAR:
-                            ans = prompt_yn(t, "This will clear the image, are you sure?")
+                            ans = prompt_yn(term, "This will clear the image, are you sure?")
                             if ans:
                                 make_undo(undos, redos,
                                           0, 0, width, height, width, data,
@@ -3054,15 +2863,15 @@ def main():
                                 colordata_fg_r, colordata_fg_g, colordata_fg_b, \
                                     colordata_bg_r, colordata_bg_g, colordata_bg_b = \
                                     new_color_data(color_mode, width, height)
-                                clear_screen(t)
+                                term.clear()
                                 refresh_matrix = (0, 0, width, height)
-                                print_status(t, f"Image cleared.")
+                                print_status(term, f"Image cleared.")
                             else:
-                                print_status(t, f"Clear canceled.")
+                                print_status(term, f"Clear canceled.")
                         case KeyActions.HOME:
                             x = 0
                             y = 0
-                            print_status(t, f"Returned to home.")
+                            print_status(term, f"Returned to home.")
                         case KeyActions.EDGE:
                             if x < 0:
                                 x = 0
@@ -3072,41 +2881,41 @@ def main():
                                 y = 0
                             elif y >= height:
                                 y = height - 1
-                            print_status(t, f"Found nearest edge.")
+                            print_status(term, f"Found nearest edge.")
                         case KeyActions.COLOR_MODE:
                             new_color_mode = None
-                            ans = prompt(t, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
+                            ans = prompt(term, "Which color mode to switch to? (D=DIRECT, 1=16, 2=256)")
                             if ans is None:
-                                print_status(t, "Mode change canceled.")
+                                print_status(term, "Mode change canceled.")
                                 continue
 
                             if ans[0].lower() == 'd':
                                 if color_mode == ColorMode.DIRECT:
-                                    print_status(t, "Already in DIRECT color mode.")
+                                    print_status(term, "Already in DIRECT color mode.")
                                     continue
                                 else:
                                     new_color_mode = ColorMode.DIRECT
                             elif ans[0] == '1':
                                 if color_mode == ColorMode.C16:
-                                    print_status(t, "Already in 16 color mode.")
+                                    print_status(term, "Already in 16 color mode.")
                                     continue
                                 else:
                                     new_color_mode = ColorMode.C16
                             elif ans[0] == '2':
                                 if color_mode == ColorMode.C256:
-                                    print_status(t, "Already in 256 color mode.")
+                                    print_status(term, "Already in 256 color mode.")
                                     continue
                                 else:
                                     new_color_mode = ColorMode.C256
                             else:
-                                print_status(t, "Unrecognized response.")
+                                print_status(term, "Unrecognized response.")
                                 continue
 
                             msg = can_convert(color_mode, new_color_mode, colordata_fg_r, colordata_bg_r)
                             if msg is not None:
-                                ans = prompt_yn(t, f"{msg} OK TO CLEAR?")
+                                ans = prompt_yn(term, f"{msg} OK TO CLEAR?")
                                 if not ans:
-                                    print_status(t, "Mode change canceled.")
+                                    print_status(term, "Mode change canceled.")
                                     continue
 
                             make_undo(undos, redos,
@@ -3121,38 +2930,36 @@ def main():
                                 colordata_bg_r, colordata_bg_g, colordata_bg_b = \
                                 new_color_data(color_mode, width, height)
                             fg_r, fg_g, fg_b, bg_r, bg_g, bg_b = get_default_colors(color_mode)
-                            clear_screen(t)
+                            term.clear()
                             refresh_matrix = (0, 0, width, height)
                             if color_mode == ColorMode.C16:
-                                print_status(t, "Changed to 16 color mode.")
+                                print_status(term, "Changed to 16 color mode.")
                             elif color_mode == ColorMode.C256:
-                                print_status(t, "Changed to 256 color mode.")
+                                print_status(term, "Changed to 256 color mode.")
                             else:
-                                print_status(t, "Changed to DIRECT color mode.")
+                                print_status(term, "Changed to DIRECT color mode.")
                         case KeyActions.SELECT_FG_COLOR:
                             if color_mode == ColorMode.DIRECT:
-                                fg_r, fg_g, fg_b = select_color_rgb(t, fg_r, fg_g, fg_b, False)
-                                print_status(t, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
+                                fg_r, fg_g, fg_b = select_color_rgb(term, fg_r, fg_g, fg_b, False)
+                                print_status(term, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
                             else:
-                                fg_r = select_color(t, fg_r, color_mode, False)
-                                print_status(t, f"Foreground color index {fg_r} selected.")
-                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                                fg_r = select_color(term, fg_r, color_mode, False)
+                                print_status(term, f"Foreground color index {fg_r} selected.")
                             # screen was cleared so needs to be drawn
                             refresh_matrix = (0, 0, width, height)
                         case KeyActions.SELECT_BG_COLOR:
                             if color_mode == ColorMode.DIRECT:
-                                bg_r, bg_g, bg_b = select_color_rgb(t, bg_r, bg_g, bg_b, True)
+                                bg_r, bg_g, bg_b = select_color_rgb(term, bg_r, bg_g, bg_b, True)
                                 if bg_r < 0:
-                                    print_status(t, f"Transparent background selected.")
+                                    print_status(term, f"Transparent background selected.")
                                 else:
-                                    print_status(t, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
+                                    print_status(term, f"Background color RGB {bg_r}, {bg_g}, {bg_b} selected.")
                             else:
-                                bg_r = select_color(t, bg_r, color_mode, True)
+                                bg_r = select_color(term, bg_r, color_mode, True)
                                 if bg_r < 0:
-                                    print_status(t, f"Transparent background selected.")
+                                    print_status(term, f"Transparent background selected.")
                                 else:
-                                    print_status(t, f"Background color index {bg_r} selected.")
-                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
+                                    print_status(term, f"Background color index {bg_r} selected.")
                             # screen was cleared so needs to be drawn
                             refresh_matrix = (0, 0, width, height)
                         case KeyActions.PUT_COLOR:
@@ -3172,9 +2979,6 @@ def main():
                             else:
                                 colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)] = fg_r
                                 colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)] = bg_r
-                            update_matrix(t, color_mode, PREVIEW_X, 2, x, y, width, data,
-                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
                         case KeyActions.PICK_COLOR:
                             if color_mode == ColorMode.DIRECT:
                                 fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
@@ -3186,18 +2990,17 @@ def main():
                             else:
                                 fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
                                 bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
-                            color_str = get_color_str(t, color_mode, fg_r, fg_g, fg_b, bg_r, bg_g, bg_b)
                         case KeyActions.SAVE_FILE:
-                            filename = prompt(t, "Filename?")
+                            filename = prompt(term, "Filename?")
                             if filename is not None:
                                 path = pathlib.Path(filename)
                                 if path.exists():
-                                    ans = prompt_yn(t, "File exists, overwrite?")
+                                    ans = prompt_yn(term, "File exists, overwrite?")
                                     if not ans:
-                                        print_status(t, "Save canceled.")
+                                        print_status(term, "Save canceled.")
                                         continue
 
-                                ans = prompt_yn(t, "With color?", True)
+                                ans = prompt_yn(term, "With color?", True)
                                 color = True
                                 if not ans:
                                     color = False
@@ -3205,11 +3008,11 @@ def main():
                                 save_file(t, path, color, data, width, color_mode,
                                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                                print_status(t, "File saved.")
+                                print_status(term, "File saved.")
                             else:
-                                print_status(t, "Save canceled.")
+                                print_status(term, "Save canceled.")
                         case KeyActions.REDRAW:
-                            clear_screen(t)
+                            term.clear()
                             refresh_matrix = (0, 0, width, height)
                         case KeyActions.UNDO:
                             undos_len = len(undos)
@@ -3223,11 +3026,11 @@ def main():
                                            colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b)
                             if undos_len == len(undos):
-                                print_status(t, "No more undos.")
+                                print_status(term, "No more undos.")
                             else:
-                                clear_screen(t)
+                                term.clear()
                                 refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
-                                print_status(t, "Undid.")
+                                print_status(term, "Undid.")
                         case KeyActions.REDO:
                             redos_len = len(redos)
                             redo_x, redo_y, undo_w, undo_h, \
@@ -3240,26 +3043,26 @@ def main():
                                            colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b)
                             if redos_len == len(redos):
-                                print_status(t, "No more redos.")
+                                print_status(term, "No more redos.")
                             else:
-                                clear_screen(t)
+                                term.clear()
                                 refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
-                                print_status(t, "Redone.")
+                                print_status(term, "Redone.")
                         case KeyActions.SELECT_TILES:
                             if x < 0 or x > width - 1 or y < 0 or y > height - 1:
-                                print_status(t, "Out of range.")
+                                print_status(term, "Out of range.")
                             else:
                                 selecting = True
                                 select_pixels = False
                                 select_x = x
                                 select_y = y
-                                print_status(t, "Entered tiles selection mode.")
+                                print_status(term, "Entered tiles selection mode.")
                         case KeyActions.SELECT_PIXELS:
                             selecting = True
                             select_pixels = True
                             select_x = x
                             select_y = y
-                            print_status(t, "Entered pixels selection mode.")
+                            print_status(term, "Entered pixels selection mode.")
                         case KeyActions.PASTE:
                             if clipboard != None:
                                 w, h = clipboard.get_dims()
@@ -3269,7 +3072,7 @@ def main():
                                     (clipboard.color_mode == ColorMode.C256 and
                                      color_mode == ColorMode.C16 and
                                      get_max_color(clipboard.colordata_fg_r, clipboard.colordata_bg_r) > 15)):
-                                    print_status(t, "Clipboard and current color modes are incompatible.")
+                                    print_status(term, "Clipboard and current color modes are incompatible.")
                                     continue
 
                                 # the width and height given by the clipboard are in character cells
@@ -3288,9 +3091,9 @@ def main():
                                                 colordata_bg_r, colordata_bg_g, colordata_bg_b,
                                                 x // 2, y // 4)
                                 refresh_matrix = (x, y, w * 2, h * 4)
-                                print_status(t, "Pasted.")
+                                print_status(term, "Pasted.")
                             else:
-                                print_status(t, "Clipboard is empty.")
+                                print_status(term, "Clipboard is empty.")
                         case KeyActions.HELP:
                             need_help = True
                             break
@@ -3300,7 +3103,7 @@ def main():
                     need_cont = False
                     need_winch = False
                     interrupted = False
-                    clear_screen(t)
+                    term.clear()
                     refresh_matrix = (0, 0, width, height)
                     # running is True so will loop back around
                     break
@@ -3308,7 +3111,7 @@ def main():
                     # need redraw
                     need_winch = False
                     interrupted = False
-                    clear_screen(t)
+                    term.clear()
                     refresh_matrix = (0, 0, width, height)
                     continue
 
