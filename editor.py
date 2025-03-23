@@ -50,6 +50,112 @@ interrupted : bool = False
 orig_winch = None
 orig_cont = None
 
+class ColorMode(Enum):
+    NONE = auto()
+    C16 = auto()
+    C256 = auto()
+    DIRECT = auto()
+
+class Term():
+    def reset(self):
+        self.fg_r : int = -1
+        self.fg_g : int = -1
+        self.fg_b : int = -1
+        self.bg_r : int = -1
+        self.bg_g : int = -1
+        self.bg_b : int = -1
+        self.normal : bool = False
+        self.x : int = -1
+        self.y : int = -1
+
+    def __init__(self, t : blessed.Terminal):
+        self.t : blessed.Terminal = t
+        self.reset()
+
+    def send_fg(self, r : int | tuple[int, int, int],
+                      g : int = -1,
+                      b : int = -1):
+        if isinstance(r, tuple):
+            g = r[1]
+            b = r[2]
+            r = r[0]
+
+        if g >= 0: # DIRECT color
+            if self.fg_r != r or \
+               self.fg_g != g or \
+               self.fg_b != b:
+                print(self.t.color_rgb(r, g, b), end='')
+                self.normal = False
+                self.fg_r = r
+                self.fg_g = g
+                self.fg_b = b
+        else: # paletted color
+            if self.fg_r != r:
+                print(self.t.color(r), end='')
+                self.normal = False
+                self.fg_r = r
+                self.fg_g = -1
+                self.fg_b = -1
+
+    def send_bg(self, r : int | tuple[int, int, int],
+                      g : int = -1,
+                      b : int = -1):
+        if isinstance(r, tuple):
+            g = r[1]
+            b = r[2]
+            r = r[0]
+
+        if g >= 0: # DIRECT color
+            if not self.normal and r < 0:
+                print(self.t.normal, end='')
+                self.normal = True
+                self.fg_r = -1
+                self.fg_g = -1
+                self.fg_b = -1
+                self.bg_r = -1
+                self.bg_g = -1
+                self.bg_b = -1
+            elif self.bg_r != r or \
+                 self.bg_g != g or \
+                 self.bg_b != b:
+                print(self.t.on_color_rgb(r, g, b), end='')
+                self.normal = False
+                self.bg_r = r
+                self.bg_g = g
+                self.bg_b = b
+        else: # paletted color
+            if not self.normal and r < 0:
+                print(self.t.normal, end='')
+                self.normal = True
+                self.fg_r = -1
+                self.fg_g = -1
+                self.fg_b = -1
+                self.bg_r = -1
+                self.bg_g = -1
+                self.bg_b = -1
+            elif self.bg_r != r:
+                print(self.t.on_color(r), end='')
+                self.normal = False
+                self.bg_r = r
+                self.bg_g = -1
+                self.bg_b = -1
+
+    def send_pos(self, x : int | tuple[int, int],
+                       y : int = -1):
+        if isinstance(x, tuple):
+            y = x[1]
+            x = x[0]
+
+        if self.x != x or \
+           self.y != y:
+            print(self.t.move_xy(x, y), end='')
+            self.x = x
+            self.y = y
+
+    def send_reverse(self):
+        print(self.t.reverse, end='')
+        self.normal = False
+
 class KeyActions(Enum):
     NONE = auto()
     QUIT = auto()
@@ -320,12 +426,6 @@ COLORS = {
     False: f"{t.color(DEFAULT_FG)}{t.on_color(DEFAULT_BG)}",
     True:  f"{t.color(DEFAULT_BG)}{t.on_color(DEFAULT_FG)}"
 }
-
-class ColorMode(Enum):
-    NONE = auto()
-    C16 = auto()
-    C256 = auto()
-    DIRECT = auto()
 
 class FillMode(Enum):
     SET = auto()
@@ -1028,75 +1128,15 @@ def pixels_to_occupied_wh(x : int, y : int, w : int, h : int):
 
     return cw, ch
 
-def print_next_color(t, cbx : int, cby : int, cw : int, color_mode : ColorMode,
-                     colordata_fg_r : array,
-                     colordata_fg_g : array,
-                     colordata_fg_b : array,
-                     colordata_bg_r : array,
-                     colordata_bg_g : array,
-                     colordata_bg_b : array,
-                     lastcolor_fg_r : array,
-                     lastcolor_fg_g : array,
-                     lastcolor_fg_b : array,
-                     lastcolor_bg_r : array,
-                     lastcolor_bg_g : array,
-                     lastcolor_bg_b : array) -> (int, int, int, int, int, int):
-    normaled : bool = False
-    if lastcolor_fg_r is None:
-        lastcolor_fg_r = colordata_fg_r[cby * cw + cbx]
-        lastcolor_fg_g = colordata_fg_g[cby * cw + cbx]
-        lastcolor_fg_b = colordata_fg_b[cby * cw + cbx]
-        lastcolor_bg_r = colordata_bg_r[cby * cw + cbx]
-        lastcolor_bg_g = colordata_bg_g[cby * cw + cbx]
-        lastcolor_bg_b = colordata_bg_b[cby * cw + cbx]
-        if lastcolor_bg_r < 0:
-            print(t.normal, end='')
-        else:
-            if color_mode == ColorMode.DIRECT:
-                print(t.on_color_rgb(lastcolor_bg_r, lastcolor_bg_b, lastcolor_bg_g), end='')
-            else:
-                print(t.on_color(lastcolor_bg_r), end='')
-        if color_mode == ColorMode.DIRECT:
-            print(t.color_rgb(lastcolor_fg_r, lastcolor_fg_b, lastcolor_fg_g), end='')
-        else:
-            print(t.color(lastcolor_fg_r), end='')
-    else:
-        color_fg_r = colordata_fg_r[cby * cw + cbx]
-        color_fg_g = colordata_fg_g[cby * cw + cbx]
-        color_fg_b = colordata_fg_b[cby * cw + cbx]
-        color_bg_r = colordata_bg_r[cby * cw + cbx]
-        color_bg_g = colordata_bg_g[cby * cw + cbx]
-        color_bg_b = colordata_bg_b[cby * cw + cbx]
-        if color_bg_r != lastcolor_bg_r or \
-           color_bg_g != lastcolor_bg_g or \
-           color_bg_b != lastcolor_bg_b:
-            if color_bg_r < 0:
-                print(t.normal, end='')
-                normaled = True
-            else:
-                if color_mode == ColorMode.DIRECT:
-                    print(t.on_color_rgb(color_bg_r, color_bg_b, color_bg_g), end='')
-                else:
-                    print(t.on_color(color_bg_r), end='')
-            lastcolor_bg_r = color_bg_r
-            lastcolor_bg_g = color_bg_g
-            lastcolor_bg_b = color_bg_b
-        if color_fg_r != lastcolor_fg_r or \
-           color_fg_g != lastcolor_fg_g or \
-           color_fg_b != lastcolor_fg_b or \
-           normaled:
-            if color_mode == ColorMode.DIRECT:
-                print(t.color_rgb(color_fg_r, color_fg_b, color_fg_g), end='')
-            else:
-                print(t.color(color_fg_r), end='')
-            lastcolor_fg_r = color_fg_r
-            lastcolor_fg_g = color_fg_g
-            lastcolor_fg_b = color_fg_b
+def get_color(cbx : int, cby : int, cw : int,
+              colordata_r : array,
+              colordata_g : array,
+              colordata_b : array) -> (int, int, int):
+    return colordata_r[cby * cw + cbx], \
+           colordata_g[cby * cw + cbx], \
+           colordata_b[cby * cw + cbx]
 
-    return lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-           lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b
-
-def update_matrix_rect(t : blessed.Terminal,
+def update_matrix_rect(term : Term,
                        color_mode : ColorMode,
                        x : int, y : int,
                        w : int, h : int,
@@ -1143,14 +1183,10 @@ def update_matrix_rect(t : blessed.Terminal,
         cbh = ch - cby
         sy2 = 3
 
-    lastcolor_fg_r : int | None = None
-    lastcolor_fg_g : int | None = None
-    lastcolor_fg_b : int | None = None
-    lastcolor_bg_r : int | None = None
-    lastcolor_bg_g : int | None = None
-    lastcolor_bg_b : int | None = None
+    # TODO for now
+    print(t.normal)
+    term.reset()
 
-    cell : int = 0
     if cbx < cx + w and cbx + cbw - 1 >= cx:
         # if the box isn't totally off a side
         if cby >= cy and cby < cy + h:
@@ -1159,47 +1195,44 @@ def update_matrix_rect(t : blessed.Terminal,
             if cbx >= cx:
                 # if top left corner resides in visible area
                 # move to position
-                print(t.move_xy(x + cbx - cx, y + cby - cy), end='')
-                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                    print_next_color(t, cbx, cby, cw, color_mode,
-                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
+                term.send_pos(x + cbx - cx, y + cby - cy)
+                term.send_bg(get_color(cbx, cby, cw,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                term.send_fg(get_color(cbx, cby, cw,
+                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
                 if draw_box:
                     if cbh == 1:
                         if cbw == 1:
                             if bw == 1:
-                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
                                                           sx1, sy1, False, False, False, True,
-                                                          sy2, sx2)
+                                                          sy2, sx2)], end='')
                             else:
-                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
                                                           sx1, sy1, False, True, False, True,
-                                                          sy2, sx2)
+                                                          sy2, sx2)], end='')
                         else:
-                            cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
                                                       sx1, sy1, False, True, False, True,
-                                                      sy2)
+                                                      sy2)], end='')
                     else:
                         if cbw == 1:
                             if bw == 1:
-                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                          sx1, sy1, False, False, False, True)
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                          sx1, sy1, False, False, False, True)], end='')
                             else:
-                                cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
                                                           sx1, sy1, False, True, False, True,
-                                                          3, 1)
+                                                          3, 1)], end='')
                         else:
-                            cell = make_cell_inverted(data, cbx * 2, cby * 4, dw,
-                                                  sx1, sy1, False, True, False, True)
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, cby * 4, dw,
+                                                  sx1, sy1, False, True, False, True)], end='')
                 else:
-                    cell = make_cell(data, cbx * 2, cby * 4, dw)
-                print(CHARS4[cell], end='')
+                    print(CHARS4[make_cell(data, cbx * 2, cby * 4, dw)], end='')
             else:
                 # otherwise, move to far left
-                print(t.move_xy(x, y + cby - cy), end='')
+                term.send_pos(x, y + cby - cy)
+
             # top
             if cbw > 2 and \
                ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
@@ -1210,62 +1243,46 @@ def update_matrix_rect(t : blessed.Terminal,
                 if draw_box:
                     if cbh == 1:
                         for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                                lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                                print_next_color(t, i, cby, cw, color_mode,
-                                                 colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                                 colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                                 lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                            cell = make_cell_inverted(data, i * 2, cby * 4, dw,
+                            term.send_bg(get_color(i, cby, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(i, cby, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell_inverted(data, i * 2, cby * 4, dw,
                                                       0, sy1, True, True, False, False,
-                                                      sy2)
-                            print(CHARS4[cell], end='')
+                                                      sy2)], end='')
                     else:
                         for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                            lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                                lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                                print_next_color(t, i, cby, cw, color_mode,
-                                                 colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                                 colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                                 lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                                 lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                            cell = make_cell_inverted(data, i * 2, cby * 4, dw,
-                                                      0, sy1, True, True, False, False)
-                            print(CHARS4[cell], end='')
+                            term.send_bg(get_color(i, cby, cw,
+                                                   colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                            term.send_fg(get_color(i, cby, cw,
+                                                   colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                            print(CHARS4[make_cell_inverted(data, i * 2, cby * 4, dw,
+                                                      0, sy1, True, True, False, False)], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, i, cby, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell(data, i * 2, cby * 4, dw)
-                        print(CHARS4[cell], end='')
+                        term.send_bg(get_color(i, cby, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(i, cby, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell(data, i * 2, cby * 4, dw)], end='')
             if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
                 # if top right corner resides in visible area
                 # and the selection is wide enough
                 # top right corner
-                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                    print_next_color(t, (cbx + cbw - 1), cby, cw, color_mode,
-                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
+                term.send_bg(get_color(cbx + cbw - 1, cby, cw,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                term.send_fg(get_color(cbx + cbw - 1, cby, cw,
+                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
                 if draw_box:
                     if cbh == 1:
-                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
+                        print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
                                                   sx2, sy1, True, False, False, True,
-                                                  sy2, sx2)
+                                                  sy2, sx2)], end='')
                     else:
-                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
-                                                  sx2, sy1, True, False, False, True)
+                        print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, cby * 4, dw,
+                                                  sx2, sy1, True, False, False, True)], end='')
                 else:
-                    cell = make_cell(data, (cbx + cbw - 1) * 2, cby * 4, dw)
-                print(CHARS4[cell], end='')
+                    print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, cby * 4, dw)], end='')
 
         if cbh > 1 and (cby + cbh - 1 >= cy and cby + cbh - 1 < cy + h):
             # if the bottom line resides in the view
@@ -1273,33 +1290,30 @@ def update_matrix_rect(t : blessed.Terminal,
             if cbx >= cx:
                 # if bottom left corner resides in visible area
                 # move to position
-                print(t.move_xy(x + cbx - cx, y + cby + cbh - 1 - cy), end='')
-                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                    print_next_color(t, cbx, (cby + cbh - 1), cw, color_mode,
-                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
+                term.send_pos(x + cbx - cx, y + cby + cbh - 1 - cy)
+                term.send_bg(get_color(cbx, cby + cbh - 1, cw,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                term.send_fg(get_color(cbx, cby + cbh - 1, cw,
+                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
                 if draw_box:
                     if cbw == 1:
                         if bw == 1:
-                            cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
                                                       sx1, sy2, False, False, True, False,
-                                                      4, sx2)
+                                                      4, sx2)], end='')
                         else:
-                            cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                            print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
                                                       sx1, sy2, True, True, True, False,
-                                                      sy2, sx2)
+                                                      sy2, sx2)], end='')
                     else:
-                        cell = make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
-                                                  sx1, sy2, False, True, True, False)
+                        print(CHARS4[make_cell_inverted(data, cbx * 2, (cby + cbh - 1) * 4, dw,
+                                                  sx1, sy2, False, True, True, False)], end='')
                 else:
-                    cell = make_cell(data, cbx * 2, (cby + cbh - 1) * 4, dw)
-                print(CHARS4[cell], end='')
+                    print(CHARS4[make_cell(data, cbx * 2, (cby + cbh - 1) * 4, dw)], end='')
             else:
                 # otherwise, move to far left
-                print(t.move_xy(x, y + cby - cy), end='')
+                term.send_pos(x, y + cby - cy)
+
             # bottom
             if cbw > 2 and \
                ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
@@ -1309,44 +1323,32 @@ def update_matrix_rect(t : blessed.Terminal,
                 # draw clamped within view
                 if draw_box:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, i, (cby + cbh - 1), cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell_inverted(data, i * 2, (cby + cbh - 1) * 4, dw,
-                                                  0, sy2, True, True, False, False)
-                        print(CHARS4[cell], end='')
+                        term.send_bg(get_color(i, cby + cbh - 1, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(i, cby + cbh - 1, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell_inverted(data, i * 2, (cby + cbh - 1) * 4, dw,
+                                                  0, sy2, True, True, False, False)], end='')
                 else:
                     for i in range(max(cx, cbx + 1), min(cx + w, cbx + cbw - 1)):
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, i, (cby + cbh - 1), cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell(data, i * 2, (cby + cbh - 1) * 4, dw)
-                        print(CHARS4[cell], end='')
+                        term.send_bg(get_color(i, cby + cbh - 1, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(i, cby + cbh - 1, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell(data, i * 2, (cby + cbh - 1) * 4, dw)], end='')
             if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
                 # if top right corner resides in visible area
                 # and the selection is wide enough
                 # bottom right corner
-                lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                    lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                    print_next_color(t, (cbx + cbw - 1), (cby + cbh - 1), cw, color_mode,
-                                     colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                     colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                     lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                     lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
+                term.send_bg(get_color(cbx + cbw - 1, cby + cbh - 1, cw,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                term.send_fg(get_color(cbx + cbw - 1, cby + cbh - 1, cw,
+                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
                 if draw_box:
-                    cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw,
-                                              sx2, sy2, True, False, True, False)
+                    print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw,
+                                              sx2, sy2, True, False, True, False)], end='')
                 else:
-                    cell = make_cell(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw)
-                print(CHARS4[cell], end='')
+                    print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw)], end='')
 
     if cby + 1 < cy + h and cby + cbh - 1 > cy:
         # if the lines aren't totally off top or bottom
@@ -1354,86 +1356,62 @@ def update_matrix_rect(t : blessed.Terminal,
             if cbx >= cx and cbx < cx + w:
                 if bw == 1:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, cbx, i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                  sx1, 0, False, False, True, True)
-                        print(CHARS4[cell], end='')
+                        term.send_pos(x + cbx - cx, y + i)
+                        term.send_bg(get_color(cbx, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(cbx, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                  sx1, 0, False, False, True, True)], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, cbx, i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
+                        term.send_pos(x + cbx - cx, y + i)
+                        term.send_bg(get_color(cbx, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(cbx, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
                                                   sx1, 0, True, True, True, True,
-                                                  3, 1)
-                        print(CHARS4[cell], end='')
+                                                  3, 1)], end='')
         else:
             # left
             if cbx >= cx and cbx < cx + w:
                 if draw_box:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, cbx, i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                  sx1, 0, False, False, True, True)
-                        print(CHARS4[cell], end='')
+                        term.send_pos(x + cbx - cx, y + i)
+                        term.send_bg(get_color(cbx, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(cbx, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                  sx1, 0, False, False, True, True)], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + cbx - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, cbx, i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell(data, cbx * 2, i * 4, dw)
-                        print(CHARS4[cell], end='')
+                        term.send_pos(x + cbx - cx, y + i)
+                        term.send_bg(get_color(cbx, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(cbx, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
             # right
             if cbx + cbh - 1 > cx and cbx + cbh - 1 < cx + w:
                 if draw_box:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, (cbx + cbw - 1), i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
-                                                  sx2, 0, False, False, True, True)
-                        print(CHARS4[cell], end='')
+                        term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
+                        term.send_bg(get_color(cbx + cbw - 1, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color(cbx + cbw - 1, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
+                                                  sx2, 0, False, False, True, True)], end='')
                 else:
                     for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        print(t.move_xy(x + (cbx + cbw - 1) - cx, y + i), end='')
-                        lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b, \
-                            lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b = \
-                            print_next_color(t, (cbx + cbw - 1), i, cw, color_mode,
-                                             colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                             colordata_bg_r, colordata_bg_g, colordata_bg_b,
-                                             lastcolor_fg_r, lastcolor_fg_g, lastcolor_fg_b,
-                                             lastcolor_bg_r, lastcolor_bg_g, lastcolor_bg_b)
-                        cell = make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)
-                        print(CHARS4[cell], end='')
+                        term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
+                        term.send_bg(get_color((cbx + cbw - 1) - cx, i, cw,
+                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                        term.send_fg(get_color((cbx + cbw - 1) - cx, i, cw,
+                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                        print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)], end='')
 
 def inkey_numeric(t : blessed.Terminal):
     global interrupted
@@ -1692,7 +1670,7 @@ def get_default_colors(color_mode : ColorMode):
     if color_mode == ColorMode.DIRECT:
         return 255, 255, 255, -1, -1, -1
 
-    return DEFAULT_FG, 0, 0, -1, 0, 0
+    return DEFAULT_FG, -1, -1, -1, -1, -1
 
 def get_color_str(t : blessed.Terminal,
                   color_mode : ColorMode,
@@ -2699,6 +2677,8 @@ def main():
     signal.signal(signal.SIGWINCH, handler_winch)
     signal.signal(signal.SIGCONT, handler_cont)
 
+    term : Term = Term(t)
+
     while running:
         refresh_matrix = (0, 0, width, height)
 
@@ -2743,7 +2723,7 @@ def main():
                         by = by // 4 * 4
                         bw = bw * 2
                         bh = bh * 4
-                    update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                    update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                        width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                        colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, False)
 
@@ -2757,7 +2737,7 @@ def main():
                             by = by // 4 * 4
                             bw = bw * 2
                             bh = bh * 4
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                        update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
                     else:
@@ -2768,11 +2748,11 @@ def main():
                 if not selecting:
                     # draw cursor
                     if last_x >= 0 and last_x < width and last_y >= 0 and last_y < width:
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                        update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
                     if x >= 0 and x < width and y >= 0 and y < width:
-                        update_matrix_rect(t, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                        update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
 
