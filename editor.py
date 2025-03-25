@@ -232,7 +232,8 @@ KEY_ACTIONS = {
     ord('v'): KeyActions.SELECT_TILES,
     ord('V'): KeyActions.SELECT_PIXELS,
     ord('P'): KeyActions.PASTE,
-    ord('H'): KeyActions.HELP
+    ord('H'): KeyActions.HELP,
+    ord('l'): KeyActions.LINE
 }
 
 KEY_ACTIONS_DESCRIPTIONS = {
@@ -260,7 +261,8 @@ KEY_ACTIONS_DESCRIPTIONS = {
     KeyActions.SELECT_TILES: "Tiles selection mode/functions",
     KeyActions.SELECT_PIXELS: "Pixels selection mode/functions",
     KeyActions.PASTE: "Paste from clipboard",
-    KeyActions.HELP: "Print this help"
+    KeyActions.HELP: "Print this help",
+    KeyActions.LINE: "Start drawing a straight line"
 }
 
 KEY_ACTIONS_SELECT_TILES = {
@@ -391,6 +393,28 @@ KEY_ACTIONS_COLOR_DESCRIPTIONS = {
     KeyActions.TRANSPARENT: "Select transparent color if applicable"
 }
 
+KEY_ACTIONS_LINE = {
+    t.KEY_ENTER: KeyActions.CONFIRM,
+    t.KEY_ESCAPE: KeyActions.CANCEL,
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('a'): KeyActions.MOVE_LEFT,
+    ord('d'): KeyActions.MOVE_RIGHT,
+    ord('w'): KeyActions.MOVE_UP,
+    ord('s'): KeyActions.MOVE_DOWN,
+}
+
+KEY_ACTIONS_LINE_DESCRIPTIONS = {
+    KeyActions.MOVE_LEFT: "Move other corner left",
+    KeyActions.MOVE_RIGHT: "Move other corner right",
+    KeyActions.MOVE_UP: "Move other corner up",
+    KeyActions.MOVE_DOWN: "Move other corner down",
+    KeyActions.CONFIRM: "Draw line",
+    KeyActions.CANCEL: "Leave line drawing mode"
+}
+
 HELPS = {
     "Main": (KEY_ACTIONS, KEY_ACTIONS_DESCRIPTIONS, None),
     "Tiles Selection Mode": (KEY_ACTIONS_SELECT_TILES, KEY_ACTIONS_SELECT_TILES_DESCRIPTIONS, None),
@@ -398,7 +422,8 @@ HELPS = {
     "Text Prompt": (KEY_ACTIONS_PROMPT, KEY_ACTIONS_PROMPT_DESCRIPTIONS, None),
     "RGB Color Selection": (KEY_ACTIONS_COLOR_RGB, KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS, None),
     "Palette Color Selection": (KEY_ACTIONS_COLOR, KEY_ACTIONS_COLOR_DESCRIPTIONS,
-                                "When selecting a color, transparency is only available for background colors.")
+                                "When selecting a color, transparency is only available for background colors."),
+    "Line Drawing Mode": (KEY_ACTIONS_LINE, KEY_ACTIONS_LINE_DESCRIPTIONS, None)
 }
 
 def key_to_action(key_actions : dict[int, KeyActions], key : int) -> KeyActions:
@@ -998,22 +1023,26 @@ def update_matrix_rect(term : Term,
     cbx : int = bx // 2
     cby : int = by // 4
     cbw, cbh = pixels_to_occupied_wh(bx, by, bw, bh)
-    # clamp to data boundaries
-    if cbx < 0:
-        cbx = 0
-        sx1 = 0
-    if cby < 0:
-        cby = 0
-        sy1 = 0
-    if cbx + cbw - 1 >= cw:
-        cbw = cw - cbx
-        sx2 = 1
-    if cby + cbh - 1 >= ch:
-        cbh = ch - cby
-        sy2 = 3
 
-    if cbx < cx + w and cbx + cbw - 1 >= cx:
-        # if the box isn't totally off a side
+    if cbx + cbw - 1 >= cx and cbx < cx + w and \
+       cby + cbh - 1 >= cy and cby < cy + h:
+        # if the box isn't totally out of view
+
+        # clamp to data boundaries
+        if cbx < 0:
+            cbx = 0
+            sx1 = 0
+        if cby < 0:
+            cby = 0
+            sy1 = 0
+        if cbx + cbw - 1 >= cw:
+            cbw = cw - cbx
+            sx2 = 1
+        if cby + cbh - 1 >= ch:
+            cbh = ch - cby
+            sy2 = 3
+
+        # top line and corners
         if cby >= cy and cby < cy + h:
             # if the top line resides in the view
             # top left corner
@@ -1057,7 +1086,6 @@ def update_matrix_rect(term : Term,
             else:
                 # otherwise, move to far left
                 term.send_pos(x, y + cby - cy)
-
             # top
             if cbw > 2 and \
                ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
@@ -1109,8 +1137,10 @@ def update_matrix_rect(term : Term,
                 else:
                     print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, cby * 4, dw)], end='')
 
+        # bottom line and corners
         if cbh > 1 and (cby + cbh - 1 >= cy and cby + cbh - 1 < cy + h):
             # if the bottom line resides in the view
+            # and the height is more than 1 cell
             # bottom left corner
             if cbx >= cx:
                 # if bottom left corner resides in visible area
@@ -1138,12 +1168,11 @@ def update_matrix_rect(term : Term,
             else:
                 # otherwise, move to far left
                 term.send_pos(x, y + cby - cy)
-
             # bottom
             if cbw > 2 and \
                ((cbx + 1 >= cx and cbx + 1 < cx + w) or \
                 (cbx + cbw - 1 < cx and cbx + cbw - 1 < cx + w)):
-                # if any of the top line resides within view
+                # if any of the bottom line resides within view
                 # and the selection is wide enough
                 # draw clamped within view
                 if draw_box:
@@ -1162,7 +1191,7 @@ def update_matrix_rect(term : Term,
                                                colordata_fg_r, colordata_fg_g, colordata_fg_b))
                         print(CHARS4[make_cell(data, i * 2, (cby + cbh - 1) * 4, dw)], end='')
             if cbw > 1 and (cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w):
-                # if top right corner resides in visible area
+                # if bottom right corner resides in visible area
                 # and the selection is wide enough
                 # bottom right corner
                 term.send_bg(get_color(cbx + cbw - 1, cby + cbh - 1, cw,
@@ -1175,11 +1204,51 @@ def update_matrix_rect(term : Term,
                 else:
                     print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, (cby + cbh - 1) * 4, dw)], end='')
 
-    if cby + 1 < cy + h and cby + cbh - 1 > cy:
-        # if the lines aren't totally off top or bottom
-        if cbw == 1:
-            if cbx >= cx and cbx < cx + w:
-                if bw == 1:
+        # side lines
+        if cby + cbh - 1 > cy and cby + 1 <= cy + h:
+            # if the lines aren't totally off top or bottom
+            if cbw == 1:
+                if cbx >= cx and cbx < cx + w:
+                    if bw == 1:
+                        if draw_box:
+                            for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                                term.send_pos(x + cbx - cx, y + i)
+                                term.send_bg(get_color(cbx, i, cw,
+                                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                                term.send_fg(get_color(cbx, i, cw,
+                                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                                sx1, 0, False, False, True, True)], end='')
+                        else:
+                            for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                                term.send_pos(x + cbx - cx, y + i)
+                                term.send_bg(get_color(cbx, i, cw,
+                                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                                term.send_fg(get_color(cbx, i, cw,
+                                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                                print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
+                    else:
+                        if draw_box:
+                            for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                                term.send_pos(x + cbx - cx, y + i)
+                                term.send_bg(get_color(cbx, i, cw,
+                                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                                term.send_fg(get_color(cbx, i, cw,
+                                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                                print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
+                                                                sx1, 0, True, True, True, True,
+                                                                3, 1)], end='')
+                        else:
+                            for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
+                                term.send_pos(x + cbx - cx, y + i)
+                                term.send_bg(get_color(cbx, i, cw,
+                                                       colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                                term.send_fg(get_color(cbx, i, cw,
+                                                       colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                                print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
+            else:
+                # left
+                if cbx >= cx and cbx < cx + w:
                     if draw_box:
                         for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                             term.send_pos(x + cbx - cx, y + i)
@@ -1197,64 +1266,25 @@ def update_matrix_rect(term : Term,
                             term.send_fg(get_color(cbx, i, cw,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
                             print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
-                else:
+                # right
+                if cbx + cbh - 1 > cx and cbx + cbh - 1 < cx + w:
                     if draw_box:
                         for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                            term.send_pos(x + cbx - cx, y + i)
-                            term.send_bg(get_color(cbx, i, cw,
+                            term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
+                            term.send_bg(get_color(cbx + cbw - 1, i, cw,
                                                    colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                            term.send_fg(get_color(cbx, i, cw,
+                            term.send_fg(get_color(cbx + cbw - 1, i, cw,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                            print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                            sx1, 0, True, True, True, True,
-                                                            3, 1)], end='')
+                            print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
+                                                            sx2, 0, False, False, True, True)], end='')
                     else:
                         for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                            term.send_pos(x + cbx - cx, y + i)
-                            term.send_bg(get_color(cbx, i, cw,
+                            term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
+                            term.send_bg(get_color(cbx + cbw - 1, i, cw,
                                                    colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                            term.send_fg(get_color(cbx, i, cw,
+                            term.send_fg(get_color(cbx + cbw - 1, i, cw,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                            print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
-        else:
-            # left
-            if cbx >= cx and cbx < cx + w:
-                if draw_box:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + cbx - cx, y + i)
-                        term.send_bg(get_color(cbx, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell_inverted(data, cbx * 2, i * 4, dw,
-                                                        sx1, 0, False, False, True, True)], end='')
-                else:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + cbx - cx, y + i)
-                        term.send_bg(get_color(cbx, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
-            # right
-            if cbx + cbh - 1 > cx and cbx + cbh - 1 < cx + w:
-                if draw_box:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
-                        term.send_bg(get_color(cbx + cbw - 1, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx + cbw - 1, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell_inverted(data, (cbx + cbw - 1) * 2, i * 4, dw,
-                                                        sx2, 0, False, False, True, True)], end='')
-                else:
-                    for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
-                        term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
-                        term.send_bg(get_color(cbx + cbw - 1, i, cw,
-                                               colordata_bg_r, colordata_bg_g, colordata_bg_b))
-                        term.send_fg(get_color(cbx + cbw - 1, i, cw,
-                                               colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                        print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)], end='')
+                            print(CHARS4[make_cell(data, (cbx + cbw - 1) * 2, i * 4, dw)], end='')
 
 def inkey_numeric(t : blessed.Terminal):
     global interrupted
@@ -2370,6 +2400,245 @@ def draw_circle(data : array,
                 for i in range(max(0, int(hx - last_largest_x + 1)), min(dw, int(hx + last_largest_x))):
                     data[y * dw + i] ^= 1
 
+def get_line_xywh(x1 : int, y1 : int,
+                  x2 : int, y2 : int,
+                  width : int, height : int) -> (float, float, float, float, bool):
+    # get top left (1) and bottom right (2)
+    sx1 : int = min(x1, x2)
+    sy1 : int = min(y1, y2)
+    sx2 : int = max(x1, x2)
+    sy2 : int = max(y1, y2)
+
+    # handle straight lines to avoid divide by zeros
+    if sy1 == sy2:
+        if sx2 < 0 or sx1 > width - 1:
+            return -1.0, -1.0, -1.0, -1.0, False
+        sx1 = max(0, sx1)
+        sx2 = min(width - 1, sx2)
+        return float(sx1) + 0.5, float(sy1) + 0.5, \
+               float(sx2 - sx1), 0.0, False
+    elif sx1 == sx2:
+        if sy2 < 0 or sy1 > height - 1:
+            return -1.0, -1.0, -1.0, -1.0, False
+        sy1 = max(0, sy1)
+        sy2 = min(height - 1, sy2)
+        return float(sx1) + 0.5, float(sy1) + 0.5, \
+               float(sy2 - sy1), 0.0, True
+
+    fx1 : float = float(sx1) + 0.5
+    fy1 : float = float(sy1) + 0.5
+    fx2 : float = float(sx2) + 0.5
+    fy2 : float = float(sy2) + 0.5
+
+    final_fx1 : float = fx1
+    final_fx2 : float = fx2
+    final_fy1 : float = fy1
+    final_fy2 : float = fy2
+
+    slope : float = (fy2 - fy1) / (fx2 - fx1)
+    inv_slope : float = (fx2 - fx1) / (fy2 - fy1)
+
+    intersects : bool = False
+
+    # leftside intersection
+    if int(fx1) < 0:
+        intersection : float = fy1 + (-fx1 * slope)
+        if slope < 0.0 and int(intersection) < 0:
+            # if line intersection is above and line is trending up
+            return -1.0, -1.0, -1.0, -1.0, False
+        elif slope > 0.0 and int(intersection) > height - 1:
+            # if line intersection is below and line is trending down
+            return -1.0, -1.0, -1.0, -1.0, False
+        final_fy1 = intersection
+        final_fx1 = 0.0
+
+    # rightside intersection
+    if int(fx2) > width - 1:
+        intersection = fy1 + ((width - fx1) * slope)
+        if slope > 0.0 and int(intersection) < 0:
+            # if line intersection is above and line is trending down
+            return -1.0, -1.0, -1.0, -1.0, False
+        elif slope < 0.0 and int(interscetion) > height - 1:
+            # if line intersection is below and line is trending up
+            return -1.0, -1.0, -1.0, -1.0, False
+        final_fy2 = intersection
+        final_fx2 = float(width) - 1.0
+
+    # top intersection
+    if int(fy1) < 0:
+        intersection = fx1 + (-fy1 * inv_slope)
+        if inv_slope < 0.0 and int(intersection) < 0:
+            # if line intersection is to the left and the line is trending left
+            return -1.0, -1.0, -1.0, -1.0, False
+        elif inv_slope > 0.0 and int(intersection) > width - 1:
+            # if line intersection is to the right and the line is trending right
+            return -1.0, -1.0, -1.0, -1.0, False
+        final_fx1 = intersection
+        final_fy1 = 0.0
+
+    # bottom intersection
+    if int(fy1) > height - 1:
+        intersection = fx1 + ((height - fy1) * inv_slope)
+        if inv_slope > 0.0 and int(intersection) < 0:
+            # if line intersection is to the left and the line is trending right
+            return -1.0, -1.0, -1.0, -1.0, False
+        elif inv_slope < 0.0 and int(intersection) > width - 1:
+            # if line intersection is to the right and the line is trending left
+            return -1.0, -1.0, -1.0, -1.0, False
+        final_fy1 = intersection
+        final_fx1 = float(height) - 1.0
+
+    if slope > 1.0:
+        return final_fx1, final_fy1, \
+               final_fy2 - final_fy1, inv_slope, True
+
+    return final_fx1, final_fy1, \
+           final_fx2 - final_fx1, slope, False
+
+def make_cell_line(data : array, dx : int, dy : int, dw : int,
+                   pos : float, slope : float, start : int, end : int, down : bool):
+    cell : int = 0
+    # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
+    if down:
+        if start <= 0:
+            if bool(data[(dy * dw) + dx]) ^ \
+               (int(pos) == 0):
+                cell += 1
+            if bool(data[(dy * dw) + (dx + 1)]) ^ \
+               (int(pos) == 1):
+                cell += 16
+        if start <= 1 and end >= 1:
+            if bool(data[((dy + 1) * dw) + dx]) ^ \
+               (int(pos + slope) == 0):
+                cell += 2
+            if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
+               (int(pos + slope) == 1):
+                cell += 32
+        if start <= 2 and end >= 2:
+            if bool(data[((dy + 2) * dw) + dx]) ^ \
+               (int(pos + (slope * 2.0)) == 0):
+                cell += 4
+            if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
+               (int(pos + (slope * 2.0)) == 1):
+                cell += 64
+        if end >= 3:
+            if bool(data[((dy + 3) * dw) + dx]) ^ \
+               (int(pos + (slope * 3.0)) == 0):
+                cell += 8
+            if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
+               (int(pos + (slope * 3.0)) == 1):
+                cell += 128
+    else:
+        if start <= 0:
+            if bool(data[(dy * dw) + dx]) ^ \
+               (int(pos) == 0):
+                cell += 1
+            if bool(data[((dy + 1) * dw) + dx]) ^ \
+               (int(pos) == 1):
+                cell += 2
+            if bool(data[((dy + 2) * dw) + dx]) ^ \
+               (int(pos) == 2):
+                cell += 4
+            if bool(data[((dy + 3) * dw) + dx]) ^ \
+               (int(pos) == 3):
+                cell += 8
+        if end >= 1:
+            if bool(data[(dy * dw) + (dx + 1)]) ^ \
+               (int(pos + slope) == 0):
+                cell += 16
+            if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
+               (int(pos + slope) == 1):
+                cell += 32
+            if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
+               (int(pos + slope) == 2):
+                cell += 64
+            if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
+               (int(pos + slope) == 3):
+                cell += 128
+
+    return cell
+ 
+def update_matrix_line(term : Term,
+                       color_mode : ColorMode,
+                       x : int, y : int,
+                       w : int, h : int,
+                       dx : int, dy : int,
+                       dw : int, data : array,
+                       colordata_fg_r : array,
+                       colordata_fg_g : array,
+                       colordata_fg_b : array,
+                       colordata_bg_r : array,
+                       colordata_bg_g : array,
+                       colordata_bg_b : array,
+                       sx1 : int, sy1 : int,
+                       sx2 : int, sy2 : int,
+                       draw_box : bool):
+    dh : int = len(data) // dw
+    cw : int = dw // 2
+    ch : int = dh // 4
+    sx, sy, length, slope, down = get_line_xywh(sx1, sy1,
+                                                sx2, sy2,
+                                                dw, dh)
+
+    dx : int = int(sx)
+    dy : int = int(sy)
+    cx : int = dx // 2
+    cy : int = dy // 4
+    last_x : int = cx
+    last_y : int = cy
+    if down:
+        pass
+    else:
+        term.send_pos(x + cx, y + cy)
+        term.send_bg(get_color(cx, cy, cw, colordata_bg_r, colordata_bg_g, colordata_bg_b))
+        term.send_fg(get_color(cx, cy, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
+        ox : float = sx % 2.0
+        oy : float = sy % 4.0
+        dl : int = int(length)
+        if dl == 0:
+            return
+
+        if int(ox) > 0:
+            if draw_box:
+                print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, ox, 1, False)], end='')
+            else:
+                print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
+        elif int(ox) == 0:
+            if dl == 1:
+                if draw_box:
+                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, 0, 0, False)], end='')
+                else:
+                    print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
+            else:
+                if draw_box:
+                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, 0, 1, False)], end='')
+                else:
+                    print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
+                ox = 2
+
+        for i in range(int(ox), dl - int(ox) + 1):
+            px : float = sx + i
+            py : float = sy + (slope * i)
+            dx = int(px)
+            dy = int(py)
+            tx : int = dx // 2
+            ty : int = dy // 4
+            if tx != last_x or ty != last_y:
+                if tx >= 0 and tx < cw and ty >= 0 and ty < ch:
+                    ox = px % 2.0
+                    oy = py % 4.0
+                    if ty != last_y:
+                        # prevent some terminal spam
+                        term.send_pos(x + tx, y + ty)
+                    term.send_bg(get_color(tx, ty, cw, colordata_bg_r, colordata_bg_g, colordata_bg_b))
+                    term.send_fg(get_color(tx, ty, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
+                    if draw_box:
+                        print(CHARS4[make_cell_line(data, tx * 2, ty * 4, dw, oy, slope, ox, dl - dx, False)], end='')
+                    else:
+                        print(CHARS4[make_cell(data, tx * 2, ty * 4, dw)], end='')
+                last_x = tx
+                last_y = ty
+
 def keycode_to_name(key):
     if key == ord(' '):
         return "SPACE"
@@ -2468,7 +2737,10 @@ def main():
     tool_mode : ToolMode = ToolMode.OUTLINE
     running : bool = True
     need_help : bool = False
-    first : bool = True
+    first : bool = True # print first time message
+    line_mode : bool = False
+    line_x : int = -1
+    line_y : int = -1
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -2573,16 +2845,22 @@ def main():
                         cancel = False
                         print_status(term, "Left selection mode.")
 
-                if not selecting:
+                if line_mode:
+                    update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, last_x, last_y, False)
+                    update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, x, y, True)
+
+                if not (selecting or line_mode):
                     # draw cursor
-                    if last_x >= 0 and last_x < width and last_y >= 0 and last_y < width:
-                        update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
-                    if x >= 0 and x < width and y >= 0 and y < width:
-                        update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
+                    update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, last_x, last_y, 1, 1, False)
+                    update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, x, y, 1, 1, True)
 
                 term.send_pos(0, 2)
                 term.send_bg(bg_r, bg_g, bg_b)
@@ -2760,6 +3038,23 @@ def main():
                             elif tool_operation == FillMode.INVERT:
                                 tool_operation_str = "Invert"
                             print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
+
+                        continue
+                    elif line_mode:
+                        key = key_to_action(KEY_ACTIONS_LINE, key)
+                        match key:
+                            case KeyActions.MOVE_LEFT:
+                                x -= 1
+                            case KeyActions.MOVE_RIGHT:
+                                x += 1
+                            case KeyActions.MOVE_UP:
+                                y -= 1
+                            case KeyActions.MOVE_DOWN:
+                                y += 1
+                            case KeyActions.CONFIRM:
+                                pass
+                            case KeyActions.CANCEL:
+                                line_mode = False
 
                         continue
 
@@ -3112,6 +3407,8 @@ def main():
                                 print_status(term, "Pasted.")
                             else:
                                 print_status(term, "Clipboard is empty.")
+                        case KeyActions.LINE:
+                            line_mode = True
                         case KeyActions.HELP:
                             need_help = True
                             break
