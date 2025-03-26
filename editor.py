@@ -2495,8 +2495,7 @@ def get_line_xywh(x1 : int, y1 : int,
     return final_fx1, final_fy1, \
            final_fx2 - final_fx1, slope, False
 
-def make_cell_line(data : array, dx : int, dy : int, dw : int,
-                   pos : float, slope : float, start : int, end : int, down : bool):
+def make_cell_line(data : array, dx : int, dy : int, dw : int, down : bool, points : tuple[int]):
     cell : int = 0
     # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
     if down:
@@ -2529,31 +2528,31 @@ def make_cell_line(data : array, dx : int, dy : int, dw : int,
                (int(pos + (slope * 3.0)) == 1):
                 cell += 128
     else:
-        if start <= 0:
+        if points[0] >= 0:
             if bool(data[(dy * dw) + dx]) ^ \
-               (int(pos) == 0):
+               (points[0] == 0):
                 cell += 1
             if bool(data[((dy + 1) * dw) + dx]) ^ \
-               (int(pos) == 1):
+               (points[0] == 1):
                 cell += 2
             if bool(data[((dy + 2) * dw) + dx]) ^ \
-               (int(pos) == 2):
+               (points[0] == 2):
                 cell += 4
             if bool(data[((dy + 3) * dw) + dx]) ^ \
-               (int(pos) == 3):
+               (points[0] == 3):
                 cell += 8
-        if end >= 1:
+        if points[1] >= 0:
             if bool(data[(dy * dw) + (dx + 1)]) ^ \
-               (int(pos + slope) == 0):
+               (points[1] == 0):
                 cell += 16
             if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
-               (int(pos + slope) == 1):
+               (points[1] == 1):
                 cell += 32
             if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
-               (int(pos + slope) == 2):
+               (points[1] == 2):
                 cell += 64
             if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
-               (int(pos + slope) == 3):
+               (points[1] == 3):
                 cell += 128
 
     return cell
@@ -2598,25 +2597,27 @@ def update_matrix_line(term : Term,
         if dl == 0:
             return
 
+        skip : int = 0
         if int(ox) > 0:
             if draw_box:
-                print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, ox, 1, False)], end='')
+                print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (-1, dy - (cy * 4)))], end='')
             else:
                 print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
+            skip = 1
         elif int(ox) == 0:
             if dl == 1:
                 if draw_box:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, 0, 0, False)], end='')
+                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4), -1))], end='')
                 else:
                     print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
             else:
                 if draw_box:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, oy, slope, 0, 1, False)], end='')
+                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4), int(sy + slope) - (cy * 4)))], end='')
                 else:
                     print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
-                ox = 2
+                skip = 2
 
-        for i in range(int(ox), dl - int(ox) + 1):
+        for i in range(skip, dl - skip):
             px : float = sx + i
             py : float = sy + (slope * i)
             dx = int(px)
@@ -2633,7 +2634,12 @@ def update_matrix_line(term : Term,
                     term.send_bg(get_color(tx, ty, cw, colordata_bg_r, colordata_bg_g, colordata_bg_b))
                     term.send_fg(get_color(tx, ty, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
                     if draw_box:
-                        print(CHARS4[make_cell_line(data, tx * 2, ty * 4, dw, oy, slope, ox, dl - dx, False)], end='')
+                        if ox < 1.0:
+                            points : tuple[int] = (dy - (ty * 4), int(sy + (slope * (i + 1))) - (ty * 4))
+                        else:
+                            # weird hack, should be i + 1?
+                            points : tuple[int] = (-1, int(sy + (slope * i)) - (ty * 4))
+                        print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, points)], end='')
                     else:
                         print(CHARS4[make_cell(data, tx * 2, ty * 4, dw)], end='')
                 last_x = tx
@@ -3408,6 +3414,8 @@ def main():
                             else:
                                 print_status(term, "Clipboard is empty.")
                         case KeyActions.LINE:
+                            line_x = x
+                            line_y = y
                             line_mode = True
                         case KeyActions.HELP:
                             need_help = True
