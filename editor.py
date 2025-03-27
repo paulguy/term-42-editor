@@ -2409,6 +2409,7 @@ def get_line_xywh(x1 : int, y1 : int,
     sx2 : int = x2
     sy1 : int = y1
     sy2 : int = y2
+    # only have to code 2 directions
     if (x2 < x1 and y2 < y1) or \
        (y2 < y1 and (y1 - y2) > (x2 - x1)) or \
        (x2 < x1 and (x1 - x2) >= (y2 - y1)):
@@ -2608,7 +2609,7 @@ def update_matrix_line(term : Term,
 
     if down:
         if draw_box:
-            if int(oy) == 0:
+            if oy < 1.0:
                 if dl == 1:
                     print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (dx - (cx * 2),
                                                                                  -1,
@@ -2632,7 +2633,7 @@ def update_matrix_line(term : Term,
                                                                                  int(sx + slope) - (cx * 2),
                                                                                  int(sx + (slope * 2.0)) - (cx * 2),
                                                                                  int(sx + (slope * 3.0)) - (cx * 2)))], end='')
-            elif int(oy) == 1:
+            elif oy < 2.0:
                 if dl == 1:
                     print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
                                                                                  dx - (cx * 2),
@@ -2650,7 +2651,7 @@ def update_matrix_line(term : Term,
                                                                                  dx - (cx * 2),
                                                                                  int(sx + slope) - (cx * 2),
                                                                                  int(sx + (slope * 2.0)) - (cx * 2)))], end='')
-            elif int(oy) == 2:
+            elif oy < 3.0:
                 if dl == 1:
                     print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
                                                                                  -1,
@@ -2662,7 +2663,7 @@ def update_matrix_line(term : Term,
                                                                                  -1,
                                                                                  dx - (cx * 2),
                                                                                  int(sx + slope) - (cx * 2)))], end='')
-            elif int(oy) == 3:
+            else:
                 print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
                                                                              -1,
                                                                              -1,
@@ -2740,7 +2741,7 @@ def update_matrix_line(term : Term,
                             points = (-1,
                                       -1,
                                       -1,
-                                      dx - (ty * 4))
+                                      dx - (tx * 2))
                         print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, points)], end='')
                     else:
                         print(CHARS4[make_cell(data, tx * 2, ty * 4, dw)], end='')
@@ -2748,7 +2749,7 @@ def update_matrix_line(term : Term,
                 last_y = ty
     else:
         if draw_box:
-            if int(ox) == 0:
+            if ox < 1.0:
                 if dl == 1:
                     print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4),
                                                                                   -1))], end='')
@@ -2756,11 +2757,9 @@ def update_matrix_line(term : Term,
                 else:
                     print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4),
                                                                                   int(sy + slope) - (cy * 4)))], end='')
-            elif int(ox) == 1:
+            else:
                 print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (-1,
                                                                               dy - (cy * 4)))], end='')
-            else:
-                print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
         else:
             print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
 
@@ -2776,7 +2775,6 @@ def update_matrix_line(term : Term,
             if tx != last_x or ty != last_y:
                 if tx >= 0 and tx < cw and ty >= 0 and ty < ch:
                     ox = px % 2.0
-                    oy = py % 4.0
                     if ty != last_y or tx <= last_x:
                         # prevent some terminal spam
                         term.send_pos(x + tx, y + ty)
