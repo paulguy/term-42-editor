@@ -2053,6 +2053,7 @@ def draw_rect(data : array, dw : int,
               x : int, y : int,
               w : int, h : int,
               mode : FillMode):
+    dh : int = len(data) // dw
     match mode:
         case FillMode.SET:
             for tx in range(max(0, x), min(dw, x + w)):
@@ -3265,7 +3266,7 @@ def main():
                                               colordata_bg_r, colordata_bg_g, colordata_bg_b)
 
                                     if tool_mode == ToolMode.OUTLINE:
-                                        draw_rect(data, width, height, bx, by, bw, bh, tool_operation)
+                                        draw_rect(data, width, bx, by, bw, bh, tool_operation)
                                     else:
                                         fill_rect(data, width, height, bx, by, bw, bh, tool_operation)
 
