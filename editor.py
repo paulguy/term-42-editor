@@ -404,6 +404,8 @@ KEY_ACTIONS_LINE = {
     ord('d'): KeyActions.MOVE_RIGHT,
     ord('w'): KeyActions.MOVE_UP,
     ord('s'): KeyActions.MOVE_DOWN,
+    ord('o'): KeyActions.OPERATION,
+    ord('l'): KeyActions.LINE
 }
 
 KEY_ACTIONS_LINE_DESCRIPTIONS = {
@@ -412,7 +414,9 @@ KEY_ACTIONS_LINE_DESCRIPTIONS = {
     KeyActions.MOVE_UP: "Move other corner up",
     KeyActions.MOVE_DOWN: "Move other corner down",
     KeyActions.CONFIRM: "Draw line",
-    KeyActions.CANCEL: "Leave line drawing mode"
+    KeyActions.CANCEL: "Leave line drawing mode",
+    KeyActions.OPERATION: "Cycle pixel operations (Set, Clear, Invert)",
+    KeyActions.LINE: "Drop line start at cursor"
 }
 
 HELPS = {
@@ -2748,7 +2752,7 @@ def update_matrix_line(term : Term,
                                       -1,
                                       -1,
                                       dx - (tx * 2))
-                        print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, points)], end='')
+                        print(CHARS4[make_cell_line(data, tx * 2, ty * 4, dw, True, points)], end='')
                     else:
                         print(CHARS4[make_cell(data, tx * 2, ty * 4, dw)], end='')
                 last_x = tx
@@ -2802,12 +2806,32 @@ def update_matrix_line(term : Term,
                         else:
                             points = (-1,
                                       dy - (ty * 4))
-                        print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, points)], end='')
+                        print(CHARS4[make_cell_line(data, tx * 2, ty * 4, dw, False, points)], end='')
                     else:
                         print(CHARS4[make_cell(data, tx * 2, ty * 4, dw)], end='')
                 last_x = tx
                 last_y = ty
 
+def draw_line(dw : int, data : array,
+              sx1 : int, sy1 : int,
+              sx2 : int, sy2 : int,
+              mode : FillMode):
+    dh : int = len(data) // dw
+    sx, sy, length, slope, down = get_line_xywh(sx1, sy1,
+                                                sx2, sy2,
+                                                dw, dh)
+
+    dl : int = int(length)
+    if dl == 0:
+        return
+
+    if down:
+        for i in range(dl):
+            data[(sy1 + (i)) * dw + (sx1 + int(slope * i))] = 1
+    else:
+        for i in range(dl):
+            data[(sy1 + int(slope * i)) * dw + (sx1 + i)] = 1
+ 
 def keycode_to_name(key):
     if key == ord(' '):
         return "SPACE"
@@ -2910,6 +2934,7 @@ def main():
     line_mode : bool = False
     line_x : int = -1
     line_y : int = -1
+    set_line : bool = False
 
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
@@ -2981,7 +3006,7 @@ def main():
                         print_status(term, "Ready.")
                     refresh_matrix = None
 
-                if selecting or cancel:
+                if selecting:
                     # light redraw after each keypress in select mode
                     bx, by, bw, bh = get_xywh(last_x, last_y,
                                               select_x, select_y,
@@ -3018,9 +3043,19 @@ def main():
                     update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                        width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                        colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, last_x, last_y, False)
-                    update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
-                                       width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
-                                       colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, x, y, True)
+                    if not cancel:
+                        if set_line:
+                            set_line = False
+                            line_x = x
+                            line_y = y
+
+                        update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
+                                           width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                           colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, x, y, True)
+                    else:
+                        line_mode = False
+                        cancel = False
+                        print_status(term, "Left line drawing mode.")
 
                 if not (selecting or line_mode):
                     # draw cursor
@@ -3209,6 +3244,7 @@ def main():
                             print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
 
                         continue
+
                     elif line_mode:
                         key = key_to_action(KEY_ACTIONS_LINE, key)
                         match key:
@@ -3220,10 +3256,21 @@ def main():
                                 y -= 1
                             case KeyActions.MOVE_DOWN:
                                 y += 1
+                            case KeyActions.OPERATION:
+                                tool_operation = FILL_MODE_CYCLE[tool_operation]
+                            case KeyActions.LINE:
+                                set_line = True
                             case KeyActions.CONFIRM:
-                                pass
+                                draw_line(width, data, line_x, line_y, x, y, tool_operation)
                             case KeyActions.CANCEL:
-                                line_mode = False
+                                cancel = True
+
+                        tool_operation_str = "Set"
+                        if tool_operation == FillMode.CLEAR:
+                            tool_operation_str = "Clear"
+                        elif tool_operation == FillMode.INVERT:
+                            tool_operation_str = "Invert"
+                        print_status(term, f"Line {line_x} {line_y} O: {tool_operation_str}")
 
                         continue
 
