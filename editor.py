@@ -753,8 +753,8 @@ def display_zoomed_matrix(term : Term,
                                         term.send_fg(DEFAULT_BG)
                     else:
                         color = colors[data[dw * py + px]]
-                        term.send_bg(colors[0])
-                        term.send_fg(colors[1])
+                        term.send_bg(color[0])
+                        term.send_fg(color[1])
 
                     if selecting:
                         sx1 = min(dx + pad, select_x)
