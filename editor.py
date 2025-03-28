@@ -3634,7 +3634,6 @@ def main():
                             if undos_len == len(undos):
                                 print_status(term, "No more undos.")
                             else:
-                                term.clear()
                                 refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
                                 print_status(term, "Undid.")
                         case KeyActions.REDO:
