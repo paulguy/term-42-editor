@@ -2580,8 +2580,9 @@ def update_matrix_line(term : Term,
                        colordata_bg_b : array,
                        sx1 : int, sy1 : int,
                        sx2 : int, sy2 : int,
-                       draw_box : bool):
+                       draw_line : bool):
     points : tuple[int]
+    skip : int = 0
 
     dh : int = len(data) // dw
     cw : int = dw // 2
@@ -2608,70 +2609,74 @@ def update_matrix_line(term : Term,
     term.send_fg(get_color(cx, cy, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
 
     if down:
-        if draw_box:
+        if draw_line:
             if oy < 1.0:
                 if dl == 1:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (dx - (cx * 2),
-                                                                                 -1,
-                                                                                 -1,
-                                                                                 -1))], end='')
+                    points = (dx - (cx * 2),
+                              -1,
+                              -1,
+                              -1)
                     return
                 elif dl == 2:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2),
-                                                                                 -1,
-                                                                                 -1))], end='')
+                    points = (dx - (cx * 2),
+                              int(sx + slope) - (cx * 2),
+                              -1,
+                              -1)
                     return
                 elif dl == 3:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2),
-                                                                                 int(sx + (slope * 2.0)) - (cx * 2),
-                                                                                 -1))], end='')
+                    points = (dx - (cx * 2),
+                              int(sx + slope) - (cx * 2),
+                              int(sx + (slope * 2.0)) - (cx * 2),
+                              -1)
                     return
                 else:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2),
-                                                                                 int(sx + (slope * 2.0)) - (cx * 2),
-                                                                                 int(sx + (slope * 3.0)) - (cx * 2)))], end='')
+                    points = (dx - (cx * 2),
+                              int(sx + slope) - (cx * 2),
+                              int(sx + (slope * 2.0)) - (cx * 2),
+                              int(sx + (slope * 3.0)) - (cx * 2))
             elif oy < 2.0:
                 if dl == 1:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                                 dx - (cx * 2),
-                                                                                 -1,
-                                                                                 -1))], end='')
+                    points = (-1,
+                              dx - (cx * 2),
+                              -1,
+                              -1)
                     return
                 elif dl == 2:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                                 dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2),
-                                                                                 -1))], end='')
+                    points = (-1,
+                              dx - (cx * 2),
+                              int(sx + slope) - (cx * 2),
+                              -1)
                     return
                 else:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                                 dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2),
-                                                                                 int(sx + (slope * 2.0)) - (cx * 2)))], end='')
+                    points = (-1,
+                              dx - (cx * 2),
+                              int(sx + slope) - (cx * 2),
+                              int(sx + (slope * 2.0)) - (cx * 2))
             elif oy < 3.0:
                 if dl == 1:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                                 -1,
-                                                                                 dx - (cx * 2),
-                                                                                 -1))], end='')
+                    points = (-1,
+                              -1,
+                              dx - (cx * 2),
+                              -1)
                     return
                 else:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                                 -1,
-                                                                                 dx - (cx * 2),
-                                                                                 int(sx + slope) - (cx * 2)))], end='')
+                    points = (-1,
+                              -1,
+                              dx - (cx * 2),
+                              int(sx + slope) - (cx * 2))
             else:
-                print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, (-1,
-                                                                             -1,
-                                                                             -1,
-                                                                             dx - (cx * 2)))], end='')
+                points = (-1,
+                          -1,
+                          -1,
+                          dx - (cx * 2))
+
+            print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, True, points)], end='')
+
+            for p in points:
+                if p >= 0 and p <= 1:
+                    skip += 1
         else:
             print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
-
-        skip : int = 4 - int(oy)
 
         for i in range(skip, dl):
             px : float = sx + (slope * i)
@@ -2682,13 +2687,14 @@ def update_matrix_line(term : Term,
             ty : int = dy // 4
             if tx != last_x or ty != last_y:
                 if tx >= 0 and tx < cw and ty >= 0 and ty < ch:
-                    oy = py % 4.0
                     if ty != last_y or tx <= last_x:
                         # prevent some terminal spam
                         term.send_pos(x + tx, y + ty)
                     term.send_bg(get_color(tx, ty, cw, colordata_bg_r, colordata_bg_g, colordata_bg_b))
                     term.send_fg(get_color(tx, ty, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                    if draw_box:
+                    if draw_line:
+                        oy = py % 4.0
+
                         if oy < 1.0:
                             if dl - i == 1:
                                 points = (dx - (tx * 2),
@@ -2748,22 +2754,26 @@ def update_matrix_line(term : Term,
                 last_x = tx
                 last_y = ty
     else:
-        if draw_box:
+        if draw_line:
             if ox < 1.0:
                 if dl == 1:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4),
-                                                                                  -1))], end='')
+                    points = (dy - (cy * 4),
+                              -1)
                     return
                 else:
-                    print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (dy - (cy * 4),
-                                                                                  int(sy + slope) - (cy * 4)))], end='')
+                    points = (dy - (cy * 4),
+                              int(sy + slope) - (cy * 4))
             else:
-                print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, (-1,
-                                                                              dy - (cy * 4)))], end='')
+                points = (-1,
+                          dy - (cy * 4))
+
+            print(CHARS4[make_cell_line(data, cx * 2, cy * 4, dw, False, points)], end='')
+
+            for p in points:
+                if p >= 0 and p <= 3:
+                    skip += 1
         else:
             print(CHARS4[make_cell(data, cx * 2, cy * 4, dw)], end='')
-
-        skip = 2 - int(oy)
 
         for i in range(skip, dl):
             px : float = sx + i
@@ -2774,13 +2784,14 @@ def update_matrix_line(term : Term,
             ty : int = dy // 4
             if tx != last_x or ty != last_y:
                 if tx >= 0 and tx < cw and ty >= 0 and ty < ch:
-                    ox = px % 2.0
                     if ty != last_y or tx <= last_x:
                         # prevent some terminal spam
                         term.send_pos(x + tx, y + ty)
                     term.send_bg(get_color(tx, ty, cw, colordata_bg_r, colordata_bg_g, colordata_bg_b))
                     term.send_fg(get_color(tx, ty, cw, colordata_fg_r, colordata_fg_g, colordata_fg_b))
-                    if draw_box:
+                    if draw_line:
+                        ox = px % 2.0
+
                         if ox < 1.0:
                             if dl - i == 1:
                                 points = (dy - (ty * 4),
