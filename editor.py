@@ -2422,17 +2422,24 @@ def get_line_xywh(x1 : int, y1 : int,
         sy1 = y2
         sy2 = y1
 
+    # handle the line "rectangle" being entirely outside of the bounds
+    if (sx1 < 0 and sx2 < 0) or \
+       (sx1 >= width and sx2 >= width) or \
+       (sy1 < 0 and sy2 < 0) or \
+       (sy1 >= height and sy2 >= height):
+        return -1.0, -1.0, -1.0, -1.0, False
+
     # handle straight lines to avoid divide by zeros
     if sy1 == sy2:
         if sx2 < 0 or sx1 > width - 1:
-            return -1.0, -1.0, -1.0, -1.0, False
+            return -1.0, -1.0, -1.0, -2.0, False
         sx1 = max(0, sx1)
         sx2 = min(width - 1, sx2)
         return float(sx1) + 0.5, float(sy1) + 0.5, \
                float(sx2 - sx1 + 1), 0.0, False
     elif sx1 == sx2:
         if sy2 < 0 or sy1 > height - 1:
-            return -1.0, -1.0, -1.0, -1.0, False
+            return -1.0, -1.0, -1.0, -3.0, False
         sy1 = max(0, sy1)
         sy2 = min(height - 1, sy2)
         return float(sx1) + 0.5, float(sy1) + 0.5, \
@@ -2443,130 +2450,186 @@ def get_line_xywh(x1 : int, y1 : int,
     fx2 : float = float(sx2) + 0.5
     fy2 : float = float(sy2) + 0.5
 
-    final_fx1 : float = fx1
-    final_fx2 : float = fx2
-    final_fy1 : float = fy1
-    final_fy2 : float = fy2
-
     slope : float = (fy2 - fy1) / (fx2 - fx1)
     inv_slope : float = (fx2 - fx1) / (fy2 - fy1)
 
-    intersects : bool = False
+    intersection : float
+
+    # TODO: redo all of this
+    if abs(slope) > abs(inv_slope):
+        # down (inv_slope)
+
+        # top intersection
+        if fy1 < 0.5:
+            intersection = fx1 + ((-fy1 + 0.5) * inv_slope)
+            if inv_slope < 0.0 and intersection < 0.0:
+                # if line intersection is to the left and the line is trending left
+                return -1.0, -1.0, -1.0, -4.0, False
+            elif inv_slope > 0.0 and intersection >= width:
+                # if line intersection is to the right and the line is trending right
+                return -1.0, -1.0, -1.0, -5.0, False
+            fx1 = intersection
+            fy1 = 0.5
+
+        # bottom intersection
+        if fy2 >= height - 0.5:
+            intersection = fx1 + ((height - fy1 - 0.5) * inv_slope)
+            if inv_slope > 0.0 and intersection < 0.0:
+                # if line intersection is to the left and the line is trending right
+                return -1.0, -1.0, -1.0, -6.0, False
+            elif inv_slope < 0.0 and intersection >= width:
+                # if line intersection is to the right and the line is trending left
+                return -1.0, -1.0, -1.0, -7.0, False
+            fx2 = intersection
+            fy2 = height - 0.5
+
+        # top point intersections
+        if fx1 < 0.5:
+            intersection = fy2 + (-(fx2 - 0.5) * slope)
+            if inv_slope > 0.0 and intersection >= height:
+                # if line intersection is below and the line is trending right
+                return -1.0, -1.0, -1.0, -8.0, False
+            fx1 = 0.5
+            fy1 = intersection
+        elif fx1 >= width - 0.5:
+            intersection = fy1 + ((width - fx1 - 0.5) * slope)
+            if inv_slope < 0.0 and intersection >= height:
+                # if line intersection is below and line is trending left
+                return -1.0, -1.0, -1.0, -9.0, False
+            fx1 = width - 0.5
+            fy1 = intersection
+
+        # bottom point intersections
+        if fx2 < 0.5:
+            intersection = fy2 + (-(fx2 - 0.5) * slope)
+            if inv_slope < 0.0 and intersection < 0.0:
+                # if line intersection is above and line is trending left
+                return -1.0, -1.0, -1.0, -10.0, False
+            fx2 = 0.5
+            fy2 = intersection
+        elif fx2 >= width - 0.5:
+            intersection = fy1 + ((width - fx1 - 0.5) * slope)
+            if inv_slope > 0.0 and intersection < 0.0:
+                # if line intersection is above and line is trending right
+                return -1.0, -1.0, -1.0, -11.0, False
+            fx2 = width - 0.5
+            fy2 = intersection
+
+        return fx1, fy1, fy2 - fy1 + 1.0, inv_slope, True
+
+    # not down (slope)
 
     # leftside intersection
-    if fx1 < 0.0:
-        intersection : float = fy1 + (-fx1 * slope)
-        if slope < 0.0 and int(intersection) < 0:
+    if fx1 < 0.5:
+        intersection = fy2 + (-(fx2 - 0.5) * slope)
+        if slope < 0.0 and intersection < 0.0:
             # if line intersection is above and line is trending up
-            return -1.0, -1.0, -1.0, -1.0, False
-        elif slope > 0.0 and int(intersection) > height - 1:
+            return -1.0, -1.0, -1.0, -12.0, False
+        elif slope > 0.0 and intersection >= height:
             # if line intersection is below and line is trending down
-            return -1.0, -1.0, -1.0, -1.0, False
-        final_fy1 = intersection
-        final_fx1 = 0.0
+            return -1.0, -1.0, -1.0, -13.0, False
+        fx1 = 0.5
+        fy1 = intersection
 
     # rightside intersection
-    if int(fx2) > width - 1:
-        intersection = fy1 + ((width - fx1) * slope)
-        if slope > 0.0 and int(intersection) < 0:
+    if fx2 >= width - 0.5:
+        intersection = fy1 + ((width - fx1 - 0.5) * slope)
+        if slope > 0.0 and intersection < 0.0:
             # if line intersection is above and line is trending down
-            return -1.0, -1.0, -1.0, -1.0, False
-        elif slope < 0.0 and int(intersection) > height - 1:
+            return -1.0, -1.0, -1.0, -14.0, False
+        elif slope < 0.0 and intersection >= height:
             # if line intersection is below and line is trending up
-            return -1.0, -1.0, -1.0, -1.0, False
-        final_fy2 = intersection
-        final_fx2 = float(width) - 1.0
+            return -1.0, -1.0, -1.0, -15.0, False
+        fx2 = width - 0.5
+        fy2 = intersection
 
-    # top intersection
-    if fy1 < 0.0:
-        intersection = fx1 + (-fy1 * inv_slope)
-        if inv_slope < 0.0 and int(intersection) < 0:
-            # if line intersection is to the left and the line is trending left
-            return -1.0, -1.0, -1.0, -1.0, False
-        elif inv_slope > 0.0 and int(intersection) > width - 1:
-            # if line intersection is to the right and the line is trending right
-            return -1.0, -1.0, -1.0, -1.0, False
-        final_fx1 = intersection
-        final_fy1 = 0.0
+    # left point intersections
+    if fy1 < 0.5:
+        intersection = fx2 + (-(fy2 - 0.5) * inv_slope)
+        if slope > 0.0 and intersection >= width:
+            # if line intersection is left and line is trending down
+            return -1.0, -1.0, -1.0, -16.0, False
+        fx1 = intersection
+        fy1 = 0.5
+    elif fy1 >= height - 0.5:
+        intersection = fx2 + ((height - fy2 - 0.5) * inv_slope)
+        if slope < 0.0 and intersection >= width:
+            # if line intersection is right and line is trending up
+            return -1.0, -1.0, -1.0, -17.0, False
+        fx1 = intersection
+        fy1 = height - 0.5
 
-    # bottom intersection
-    if int(fy1) > height - 1:
-        intersection = fx1 + ((height - fy1) * inv_slope)
-        if inv_slope > 0.0 and int(intersection) < 0:
-            # if line intersection is to the left and the line is trending right
-            return -1.0, -1.0, -1.0, -1.0, False
-        elif inv_slope < 0.0 and int(intersection) > width - 1:
-            # if line intersection is to the right and the line is trending left
-            return -1.0, -1.0, -1.0, -1.0, False
-        final_fy1 = intersection
-        final_fx1 = float(height) - 1.0
+    # right point intersections
+    if fy2 < 0.5:
+        intersection = fx1 - ((fy1 - 0.5) * inv_slope)
+        if slope < 0.0 and intersection < 0.0:
+            # if line intersection is left and line is trending up
+            return -1.0, -1.0, -1.0, -18.0, False
+        fx2 = intersection
+        fy2 = 0.5
+    elif fy2 >= height - 0.5:
+        intersection = fx1 + ((height - fy1 - 0.5) * inv_slope)
+        if slope > 0.0 and intersection < 0.0:
+            # if line intersection is left and line is trending down
+            return -1.0, -1.0, -1.0, -19.0, False
+        fx2 = intersection
+        fy2 = height - 0.5
 
-    if abs(slope) > 1.0:
-        return final_fx1, final_fy1, \
-               final_fy2 - final_fy1 + 1, inv_slope, True
-
-    return final_fx1, final_fy1, \
-           final_fx2 - final_fx1 + 1, slope, False
+    return fx1, fy1, fx2 - fx1 + 1.0, slope, False
 
 def make_cell_line(data : array, dx : int, dy : int, dw : int, down : bool, points : tuple[int]):
     cell : int = 0
     # offset LSB to RSB goes top left -> bottom left, top right -> bottom right
     if down:
-        if points[0] >= 0:
-            if bool(data[(dy * dw) + dx]) ^ \
-               (points[0] == 0):
-                cell += 1
-            if bool(data[(dy * dw) + (dx + 1)]) ^ \
-               (points[0] == 1):
-                cell += 16
-        if points[1] >= 0:
-            if bool(data[((dy + 1) * dw) + dx]) ^ \
-               (points[1] == 0):
-                cell += 2
-            if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
-               (points[1] == 1):
-                cell += 32
-        if points[2] >= 0:
-            if bool(data[((dy + 2) * dw) + dx]) ^ \
-               (points[2] == 0):
-                cell += 4
-            if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
-               (points[2] == 1):
-                cell += 64
-        if points[3] >= 0:
-            if bool(data[((dy + 3) * dw) + dx]) ^ \
-               (points[3] == 0):
-                cell += 8
-            if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
-               (points[3] == 1):
-                cell += 128
+        if bool(data[(dy * dw) + dx]) ^ \
+           (points[0] == 0):
+            cell += 1
+        if bool(data[(dy * dw) + (dx + 1)]) ^ \
+           (points[0] == 1):
+            cell += 16
+        if bool(data[((dy + 1) * dw) + dx]) ^ \
+           (points[1] == 0):
+            cell += 2
+        if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
+           (points[1] == 1):
+            cell += 32
+        if bool(data[((dy + 2) * dw) + dx]) ^ \
+           (points[2] == 0):
+            cell += 4
+        if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
+           (points[2] == 1):
+            cell += 64
+        if bool(data[((dy + 3) * dw) + dx]) ^ \
+           (points[3] == 0):
+            cell += 8
+        if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
+           (points[3] == 1):
+            cell += 128
     else:
-        if points[0] >= 0:
-            if bool(data[(dy * dw) + dx]) ^ \
-               (points[0] == 0):
-                cell += 1
-            if bool(data[((dy + 1) * dw) + dx]) ^ \
-               (points[0] == 1):
-                cell += 2
-            if bool(data[((dy + 2) * dw) + dx]) ^ \
-               (points[0] == 2):
-                cell += 4
-            if bool(data[((dy + 3) * dw) + dx]) ^ \
-               (points[0] == 3):
-                cell += 8
-        if points[1] >= 0:
-            if bool(data[(dy * dw) + (dx + 1)]) ^ \
-               (points[1] == 0):
-                cell += 16
-            if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
-               (points[1] == 1):
-                cell += 32
-            if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
-               (points[1] == 2):
-                cell += 64
-            if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
-               (points[1] == 3):
-                cell += 128
+        if bool(data[(dy * dw) + dx]) ^ \
+           (points[0] == 0):
+            cell += 1
+        if bool(data[((dy + 1) * dw) + dx]) ^ \
+           (points[0] == 1):
+            cell += 2
+        if bool(data[((dy + 2) * dw) + dx]) ^ \
+           (points[0] == 2):
+            cell += 4
+        if bool(data[((dy + 3) * dw) + dx]) ^ \
+           (points[0] == 3):
+            cell += 8
+        if bool(data[(dy * dw) + (dx + 1)]) ^ \
+           (points[1] == 0):
+            cell += 16
+        if bool(data[((dy + 1) * dw) + (dx + 1)]) ^ \
+           (points[1] == 1):
+            cell += 32
+        if bool(data[((dy + 2) * dw) + (dx + 1)]) ^ \
+           (points[1] == 2):
+            cell += 64
+        if bool(data[((dy + 3) * dw) + (dx + 1)]) ^ \
+           (points[1] == 3):
+            cell += 128
 
     return cell
  
@@ -2596,7 +2659,7 @@ def update_matrix_line(term : Term,
                                                 dw, dh)
 
     dl : int = int(length)
-    if dl == 0:
+    if dl <= 0: # if line is 0 length or negative from totally off screen
         return
 
     dx : int = int(sx)
@@ -2620,19 +2683,16 @@ def update_matrix_line(term : Term,
                               -1,
                               -1,
                               -1)
-                    return
                 elif dl == 2:
                     points = (dx - (cx * 2),
                               int(sx + slope) - (cx * 2),
                               -1,
                               -1)
-                    return
                 elif dl == 3:
                     points = (dx - (cx * 2),
                               int(sx + slope) - (cx * 2),
                               int(sx + (slope * 2.0)) - (cx * 2),
                               -1)
-                    return
                 else:
                     points = (dx - (cx * 2),
                               int(sx + slope) - (cx * 2),
@@ -2644,13 +2704,11 @@ def update_matrix_line(term : Term,
                               dx - (cx * 2),
                               -1,
                               -1)
-                    return
                 elif dl == 2:
                     points = (-1,
                               dx - (cx * 2),
                               int(sx + slope) - (cx * 2),
                               -1)
-                    return
                 else:
                     points = (-1,
                               dx - (cx * 2),
@@ -2662,7 +2720,6 @@ def update_matrix_line(term : Term,
                               -1,
                               dx - (cx * 2),
                               -1)
-                    return
                 else:
                     points = (-1,
                               -1,
@@ -2763,7 +2820,6 @@ def update_matrix_line(term : Term,
                 if dl == 1:
                     points = (dy - (cy * 4),
                               -1)
-                    return
                 else:
                     points = (dy - (cy * 4),
                               int(sy + slope) - (cy * 4))
@@ -2827,10 +2883,18 @@ def draw_line(dw : int, data : array,
 
     if down:
         for i in range(dl):
-            data[(sy1 + (i)) * dw + (sx1 + int(slope * i))] = 1
+            dx : int = int(sy + (i))
+            dy : int = int(sx + (slope * i))
+            if dx >= 0 and dx < dw and \
+               dy >= 0 and dy < dh:
+                data[dx * dw + dy] = 1
     else:
         for i in range(dl):
-            data[(sy1 + int(slope * i)) * dw + (sx1 + i)] = 1
+            dx = int(sy + (slope * i))
+            dy = int(sx + i)
+            if dx >= 0 and dx < dw and \
+               dy >= 0 and dy < dh:
+                data[dx * dw + dy] = 1
  
 def keycode_to_name(key):
     if key == ord(' '):
@@ -3226,8 +3290,7 @@ def main():
                                     bx, by, bw, bh = get_xywh(x, y,
                                                               select_x, select_y,
                                                               width, height)
-                                    refresh_matrix = (0, 0, width, height)
-                                    #refresh_matrix = (bx, by, bw, bh)
+                                    refresh_matrix = (bx, by, bw, bh)
 
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
@@ -3261,6 +3324,16 @@ def main():
                             case KeyActions.LINE:
                                 set_line = True
                             case KeyActions.CONFIRM:
+                                bx, by, bw, bh = get_xywh(x, y,
+                                                          line_x, line_y,
+                                                          width, height)
+
+                                make_undo(undos, redos,
+                                          bx, by, bw, bh, width, data,
+                                          color_mode,
+                                          colordata_fg_r, colordata_fg_g, colordata_fg_b,
+                                          colordata_bg_r, colordata_bg_g, colordata_bg_b)
+
                                 draw_line(width, data, line_x, line_y, x, y, tool_operation)
                             case KeyActions.CANCEL:
                                 cancel = True
@@ -3270,8 +3343,11 @@ def main():
                             tool_operation_str = "Clear"
                         elif tool_operation == FillMode.INVERT:
                             tool_operation_str = "Invert"
-                        print_status(term, f"Line {line_x} {line_y} O: {tool_operation_str}")
+                        #print_status(term, f"Line {line_x} {line_y} O: {tool_operation_str}")
 
+                        sx, sy, length, slope, down = get_line_xywh(line_x, line_y, x, y, width, height)
+                        print_status(term, f"{sx:02} {sy:02} {length:02} {slope:02} {down}")
+ 
                         continue
 
                     key = key_to_action(KEY_ACTIONS, key)
