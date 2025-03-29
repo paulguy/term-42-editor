@@ -706,7 +706,7 @@ def display_zoomed_matrix(term : Term,
                                     tile += TILE_INVERT
                                 else:
                                     term.send_bg(color_r, color_g, color_b)
-                                    term.send.fg(max(0, 255 - color_r - 64),
+                                    term.send_fg(max(0, 255 - color_r - 64),
                                                  max(0, 255 - color_g - 64),
                                                  max(0, 255 - color_b - 64))
                             else:
