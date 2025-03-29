@@ -837,7 +837,7 @@ def display_zoomed_matrix(term : Term,
                                 tile += TILE_BOTTOMRIGHT
                             else:
                                 tile += TILE_RIGHT
-                else:
+                else: # outer edge
                     if px == -1:
                         if py == -1:
                             tile += TILE_CORNER_BOTTOMRIGHT
@@ -1280,7 +1280,7 @@ def update_matrix_rect(term : Term,
                                                    colordata_fg_r, colordata_fg_g, colordata_fg_b))
                             print(CHARS4[make_cell(data, cbx * 2, i * 4, dw)], end='')
                 # right
-                if cbx + cbh - 1 > cx and cbx + cbh - 1 < cx + w:
+                if cbx + cbw - 1 >= cx and cbx + cbw - 1 < cx + w:
                     if draw_box:
                         for i in range(max(cy, cby + 1), min(cy + h, cby + cbh - 1)):
                             term.send_pos(x + (cbx + cbw - 1) - cx, y + i)
@@ -3283,7 +3283,7 @@ def main():
                                                 colordata_fg_r[ty * (width // 2) + tx] = fg_r
                                                 colordata_bg_r[ty * (width // 2) + tx] = bg_r
 
-                                    refresh_matrix = (bx * 2, by * 4, bw * 2, bw * 4)
+                                    refresh_matrix = (bx * 2, by * 4, bw * 2, bh * 4)
                             bx, by, bw, bh = get_xywh(x, y,
                                                       select_x, select_y,
                                                       width, height)
