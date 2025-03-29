@@ -12,15 +12,12 @@ import signal
 
 import blessed
 
-# TODO: Add line and (maybe? probably not) flood fill.
 # TODO: More selection functions.
 #         shift 1px - pixels
 #         Maybe affine transforms?
 # TODO: Maybe add preview viewport. (probably not)
 # TODO: Various screen refresh bugs.
 # TODO: Maybe revamped paste for affine pasting? also multiple named clipboards
-# TODO: Maybe replace foreground/background color
-# TODO: Save filename.
 
 # TODO: undo quirk undoing a color put on top row
 # TODO: another undo quirk with undoing pastes
@@ -3042,6 +3039,8 @@ def main():
     line_y : int = -1
     set_line : bool = False
 
+    last_filename : str = ""
+
     if t.number_of_colors == 256:
         max_color_mode = ColorMode.C256
     elif t.number_of_colors < 256:
@@ -3637,8 +3636,19 @@ def main():
                                 fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
                                 bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
                         case KeyActions.SAVE_FILE:
-                            filename = prompt(term, "Filename?")
+                            filename = ""
+                            if len(last_filename) == 0:
+                                filename = prompt(term, "Filename?")
+                            else:
+                                filename = prompt(term, f"Filename? [{last_filename}]")
                             if filename is not None:
+                                if len(filename) == 0:
+                                    if len(last_filename) > 0:
+                                        filename = last_filename
+                                    else:
+                                        print_status(term, "Save canceled.")
+                                        continue
+
                                 path = pathlib.Path(filename)
                                 if path.exists():
                                     ans = prompt_yn(term, "File exists, overwrite?")
@@ -3654,7 +3664,9 @@ def main():
                                 save_file(t, path, color, data, width, color_mode,
                                           colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                           colordata_bg_r, colordata_bg_g, colordata_bg_b)
-                                print_status(term, "File saved.")
+
+                                last_filename = filename
+                                print_status(term, f"File saved as {last_filename}.")
                             else:
                                 print_status(term, "Save canceled.")
                         case KeyActions.REDRAW:
