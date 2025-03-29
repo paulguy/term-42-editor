@@ -433,7 +433,9 @@ HELPS = {
     "RGB Color Selection": (KEY_ACTIONS_COLOR_RGB, KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS, None),
     "Palette Color Selection": (KEY_ACTIONS_COLOR, KEY_ACTIONS_COLOR_DESCRIPTIONS,
                                 "When selecting a color, transparency is only available for background colors."),
-    "Line Drawing Mode": (KEY_ACTIONS_LINE, KEY_ACTIONS_LINE_DESCRIPTIONS, None)
+    "Line Drawing Mode": (KEY_ACTIONS_LINE, KEY_ACTIONS_LINE_DESCRIPTIONS, None),
+    "Usage Overview": (None, None, "This application allows for drawing graphics within a terminal utilizing the octant (2x4) characters available to the terminal, with colors applied.  Because of the limitations of attributes being a foreground and background color per character, each 2x4 cell can only have 2 colors so one needs to be strategic in drawing their graphics to avoid attribute clash or styling things in a way that works well with the attribute clash or masks it.\n"
+"In using it, operations are done on either a per-tile or per-pixel basis.  Generally, drawing operations are per pixel, but operations involving colors happen on whole tile boundaries only.  Often times, pixel operations won't do anything to tile colors and tile operations won't do anything to pixel data so they need to be logically thought of as 2 separate layers that affect each other and operations need to be done separately.  For example, you can draw out outlines of where different colors are to be, using the preview grid for help, then coloring it, maybe adjusting different shapes to fit better or just going with it and letting there be a bit of colors bleeding.")
 }
 
 def key_to_action(key_actions : dict[int, KeyActions], key : int) -> KeyActions:
@@ -2947,36 +2949,43 @@ def keycode_to_name(key):
 
     return key.upper()
 
-def print_help(t):
-    for h in HELPS.keys():
-        print(h)
-        print(f"{'':-<{len(h)}}")
+def print_wrap_string(t : blessed.Terminal, s : str):
+    lines = t.wrap(s)
+    for line in lines:
+        print(line)
 
-        h = HELPS[h]
-        for key in h[0].keys():
-            action = h[0][key]
-            keys = []
-            for key2 in h[0].keys():
-                if h[0][key2] == action:
-                    if len(keys) == 0 and key2 != key:
-                        # detect if key has already been done
-                        break
-                    keys.append(key2)
-            if len(keys) == 0:
-                continue
-            for key in keys:
-                if key == keys[-1]:
-                    print(f"{keycode_to_name(key)}: ", end='')
-                else:
-                    print(f"{keycode_to_name(key)}, ", end='')
-            print(h[1][action])
-        print()
-        if h[2] is not None:
-            print(h[2])
-            print()
-
-    print("Press any key to return . . .")
+def print_help(t : blessed.Terminal):
     with t.cbreak():
+        for h in HELPS.keys():
+            print(h)
+            print(f"{'':-<{len(h)}}")
+
+            h = HELPS[h]
+            if h[0] is not None:
+                for key in h[0].keys():
+                    outstr = ""
+                    action = h[0][key]
+                    keys = []
+                    for key2 in h[0].keys():
+                        if h[0][key2] == action:
+                            if len(keys) == 0 and key2 != key:
+                                # detect if key has already been done
+                                break
+                            keys.append(key2)
+                    if len(keys) == 0:
+                        continue
+                    for key in keys:
+                        if key == keys[-1]:
+                            outstr += f"{keycode_to_name(key)}: {h[1][action]}"
+                        else:
+                            outstr += f"{keycode_to_name(key)}, "
+                    print_wrap_string(t, outstr)
+                print()
+            if h[2] is not None:
+                print_wrap_string(t, h[2])
+                print()
+
+        print("Press any key to return . . .")
         _ = t.inkey()
 
 def handler_winch(signum, frame):
