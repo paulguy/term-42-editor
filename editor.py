@@ -394,7 +394,7 @@ KEY_ACTIONS_COLOR_DESCRIPTIONS = {
 }
 
 KEY_ACTIONS_LINE = {
-    t.KEY_ENTER: KeyActions.CONFIRM,
+    ord(' '): KeyActions.CONFIRM,
     t.KEY_ESCAPE: KeyActions.CANCEL,
     t.KEY_LEFT: KeyActions.MOVE_LEFT,
     t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
@@ -2456,7 +2456,6 @@ def get_line_xywh(x1 : int, y1 : int,
 
     intersection : float
 
-    # TODO: redo all of this
     if abs(slope) > abs(inv_slope):
         # down (inv_slope)
 
@@ -2879,24 +2878,55 @@ def draw_line(dw : int, data : array,
                                                 dw, dh)
 
     dl : int = int(length)
-    if dl == 0:
+    if dl <= 0:
         return
 
-    if down:
-        for i in range(dl):
-            dx : int = int(sy + (i))
-            dy : int = int(sx + (slope * i))
-            if dx >= 0 and dx < dw and \
-               dy >= 0 and dy < dh:
-                data[dx * dw + dy] = 1
-    else:
-        for i in range(dl):
-            dx = int(sy + (slope * i))
-            dy = int(sx + i)
-            if dx >= 0 and dx < dw and \
-               dy >= 0 and dy < dh:
-                data[dx * dw + dy] = 1
- 
+    if mode == FillMode.SET:
+        if down:
+            for i in range(dl):
+                dx : int = int(sx + (slope * i))
+                dy : int = int(sy + i)
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] = 1
+        else:
+            for i in range(dl):
+                dx = int(sx + i)
+                dy = int(sy + (slope * i))
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] = 1
+    elif mode == FillMode.CLEAR:
+        if down:
+            for i in range(dl):
+                dx : int = int(sx + (slope * i))
+                dy : int = int(sy + i)
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] = 0
+        else:
+            for i in range(dl):
+                dx = int(sx + i)
+                dy = int(sy + (slope * i))
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] = 0
+    else: # invert
+        if down:
+            for i in range(dl):
+                dx : int = int(sx + (slope * i))
+                dy : int = int(sy + i)
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] ^= 1
+        else:
+            for i in range(dl):
+                dx = int(sx + i)
+                dy = int(sy + (slope * i))
+                if dx >= 0 and dx < dw and \
+                   dy >= 0 and dy < dh:
+                    data[dy * dw + dx] ^= 1
+
 def keycode_to_name(key):
     if key == ord(' '):
         return "SPACE"
@@ -3099,6 +3129,16 @@ def main():
                         update_matrix_rect(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, bx, by, bw, bh, True)
+
+                        tool_mode_str = "Outline"
+                        if tool_mode == ToolMode.FILL:
+                            tool_mode_str = "Fill"
+                        tool_operation_str = "Set"
+                        if tool_operation == FillMode.CLEAR:
+                            tool_operation_str = "Clear"
+                        elif tool_operation == FillMode.INVERT:
+                            tool_operation_str = "Invert"
+                        print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
                     else:
                         selecting = False
                         cancel = False
@@ -3117,6 +3157,13 @@ def main():
                         update_matrix_line(term, color_mode, PREVIEW_X, 2, width // 2, height // 4, 0, 0,
                                            width, data, colordata_fg_r, colordata_fg_g, colordata_fg_b,
                                            colordata_bg_r, colordata_bg_g, colordata_bg_b, line_x, line_y, x, y, True)
+
+                        tool_operation_str = "Set"
+                        if tool_operation == FillMode.CLEAR:
+                            tool_operation_str = "Clear"
+                        elif tool_operation == FillMode.INVERT:
+                            tool_operation_str = "Invert"
+                        print_status(term, f"Line {line_x} {line_y} O: {tool_operation_str}")
                     else:
                         line_mode = False
                         cancel = False
@@ -3297,16 +3344,6 @@ def main():
                                                       select_x, select_y,
                                                       width, height,
                                                       False)
-                            tool_mode_str = "Outline"
-                            if tool_mode == ToolMode.FILL:
-                                tool_mode_str = "Fill"
-                            tool_operation_str = "Set"
-                            if tool_operation == FillMode.CLEAR:
-                                tool_operation_str = "Clear"
-                            elif tool_operation == FillMode.INVERT:
-                                tool_operation_str = "Invert"
-                            print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
-
                         continue
 
                     elif line_mode:
@@ -3325,8 +3362,8 @@ def main():
                             case KeyActions.LINE:
                                 set_line = True
                             case KeyActions.CONFIRM:
-                                bx, by, bw, bh = get_xywh(x, y,
-                                                          line_x, line_y,
+                                bx, by, bw, bh = get_xywh(line_x, line_y,
+                                                          x, y,
                                                           width, height)
 
                                 make_undo(undos, redos,
@@ -3339,16 +3376,6 @@ def main():
                             case KeyActions.CANCEL:
                                 cancel = True
 
-                        tool_operation_str = "Set"
-                        if tool_operation == FillMode.CLEAR:
-                            tool_operation_str = "Clear"
-                        elif tool_operation == FillMode.INVERT:
-                            tool_operation_str = "Invert"
-                        #print_status(term, f"Line {line_x} {line_y} O: {tool_operation_str}")
-
-                        sx, sy, length, slope, down = get_line_xywh(line_x, line_y, x, y, width, height)
-                        print_status(term, f"{sx:02} {sy:02} {length:02} {slope:02} {down}")
- 
                         continue
 
                     key = key_to_action(KEY_ACTIONS, key)
