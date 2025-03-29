@@ -176,6 +176,9 @@ class KeyActions(Enum):
     PASTE = auto()
     LINE = auto()
     HELP = auto()
+    SWAP = auto()
+    PICK_FG_COLOR = auto()
+    PICK_BG_COLOR = auto()
 
     # for prompt
     BACKSPACE = auto()
@@ -233,7 +236,10 @@ KEY_ACTIONS = {
     ord('V'): KeyActions.SELECT_PIXELS,
     ord('P'): KeyActions.PASTE,
     ord('H'): KeyActions.HELP,
-    ord('l'): KeyActions.LINE
+    ord('l'): KeyActions.LINE,
+    ord('I'): KeyActions.SWAP,
+    ord('o'): KeyActions.PICK_FG_COLOR,
+    ord('O'): KeyActions.PICK_BG_COLOR
 }
 
 KEY_ACTIONS_DESCRIPTIONS = {
@@ -262,7 +268,10 @@ KEY_ACTIONS_DESCRIPTIONS = {
     KeyActions.SELECT_PIXELS: "Pixels selection mode/functions",
     KeyActions.PASTE: "Paste from clipboard",
     KeyActions.HELP: "Print this help",
-    KeyActions.LINE: "Start drawing a straight line"
+    KeyActions.LINE: "Start drawing a straight line",
+    KeyActions.SWAP: "Swap current foreground and background color",
+    KeyActions.PICK_FG_COLOR: "Pick only foreground color",
+    KeyActions.PICK_BG_COLOR: "Pick only background color"
 }
 
 KEY_ACTIONS_SELECT_TILES = {
@@ -1398,6 +1407,8 @@ def select_color_rgb(term : Term,
 
     while True:
         term.send_normal()
+        term.send_pos(0, 0)
+        print(term.t.ljust(""), end='')
         term.send_pos(0, 0)
         print(r, end='')
         term.send_pos(4, 0)
@@ -3138,7 +3149,10 @@ def main():
                             tool_operation_str = "Clear"
                         elif tool_operation == FillMode.INVERT:
                             tool_operation_str = "Invert"
-                        print_status(term, f"Sel Pixels {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
+                        sel_mode_str = "Tiles"
+                        if select_pixels:
+                            sel_mode_str = "Pixels"
+                        print_status(term, f"Sel {sel_mode_str} {select_x} {select_y} S: {bw} {bh} M: {tool_mode_str} O: {tool_operation_str}")
                     else:
                         selecting = False
                         cancel = False
@@ -3181,7 +3195,7 @@ def main():
                 term.send_pos(0, 2)
                 term.send_bg(bg_r, bg_g, bg_b)
                 term.send_fg(fg_r, fg_g, fg_b)
-                print("𜶉𜶉", end='')
+                print(CURSOR, end='')
                 display_zoomed_matrix(term, ZOOMED_X, 2, ZOOMED_PAD,
                                       x, y, width, height,
                                       selecting, select_x, select_y,
@@ -3274,7 +3288,6 @@ def main():
                                                       select_x, select_y,
                                                       width, height)
                             bw, bh = pixels_to_occupied_wh(bx, by, bw, bh)
-                            print_status(term, f"Selecting tiles {select_x // 2} {select_y // 4} S: {bw} {bh}")
                         else: # pixels selection
                             key = key_to_action(KEY_ACTIONS_SELECT_PIXELS, key)
                             match key:
@@ -3733,6 +3746,48 @@ def main():
                         case KeyActions.HELP:
                             need_help = True
                             break
+                        case KeyActions.SWAP:
+                            def_r, def_g, def_b, _, _, _ = get_default_colors(color_mode)
+                            if color_mode == ColorMode.DIRECT:
+                                temp = fg_r
+                                if bg_r < 0:
+                                    fg_r = def_r
+                                else:
+                                    fg_r = bg_r
+                                bg_r = temp
+                                temp = fg_g
+                                if bg_g < 0:
+                                    fg_g = def_g
+                                else:
+                                    fg_g = bg_g
+                                bg_g = temp
+                                temp = fg_b
+                                if bg_b < 0:
+                                    fg_b = def_b
+                                else:
+                                    fg_b = bg_b
+                                bg_b = temp
+                            else:
+                                temp = fg_r
+                                if bg_r < 0:
+                                    bg_r = def_r
+                                else:
+                                    fg_r = bg_r
+                                bg_r = temp
+                        case KeyActions.PICK_FG_COLOR:
+                            if color_mode == ColorMode.DIRECT:
+                                fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
+                                fg_g = colordata_fg_g[((y // 4) * (width // 2)) + (x // 2)]
+                                fg_b = colordata_fg_b[((y // 4) * (width // 2)) + (x // 2)]
+                            else:
+                                fg_r = colordata_fg_r[((y // 4) * (width // 2)) + (x // 2)]
+                        case KeyActions.PICK_BG_COLOR:
+                            if color_mode == ColorMode.DIRECT:
+                                bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_g = colordata_bg_g[((y // 4) * (width // 2)) + (x // 2)]
+                                bg_b = colordata_bg_b[((y // 4) * (width // 2)) + (x // 2)]
+                            else:
+                                bg_r = colordata_bg_r[((y // 4) * (width // 2)) + (x // 2)]
 
                 if need_cont:
                     # need to fully reinitialize the terminal state and redraw

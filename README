@@ -41,6 +41,10 @@ V: Tiles selection mode/functions
 Shift+V: Pixels selection mode/functions
 Shift+P: Paste from clipboard
 Shift+H: Print this help
+L: Start drawing a straight line
+Shift+I: Swap current foreground and background color
+O: Pick only foreground color
+Shift+O: Pick only background color
 
 Tiles Selection Mode
 --------------------
@@ -101,6 +105,17 @@ DOWN, S: Move other corner down
 T: Select transparent color if applicable
 
 When selecting a color, transparency is only available for background colors.
+
+Line Drawing Mode
+-----------------
+SPACE: Draw line
+ESCAPE: Leave line drawing mode
+LEFT, A: Move other corner left
+RIGHT, D: Move other corner right
+UP, W: Move other corner up
+DOWN, S: Move other corner down
+O: Cycle pixel operations (Set, Clear, Invert)
+L: Drop line start at cursor
 
 Known Bugs/Issues:
 The status/prompt lines don't clear.
