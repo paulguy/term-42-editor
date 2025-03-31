@@ -3711,7 +3711,6 @@ def main():
                             if redos_len == len(redos):
                                 print_status(term, "No more redos.")
                             else:
-                                term.clear()
                                 refresh_matrix = (undo_x, undo_y, undo_w, undo_h)
                                 print_status(term, "Redone.")
                         case KeyActions.SELECT_TILES:
