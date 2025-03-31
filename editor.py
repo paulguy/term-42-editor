@@ -3060,6 +3060,7 @@ def main():
             colordata_fg_r, colordata_fg_g, colordata_fg_b, \
             colordata_bg_r, colordata_bg_g, colordata_bg_b = \
             load_file(t, max_color_mode, sys.argv[1])
+        last_filename = sys.argv[1]
     else:
         color_mode = max_color_mode
 
