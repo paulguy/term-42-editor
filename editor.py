@@ -356,7 +356,14 @@ KEY_ACTIONS_COLOR_RGB = {
     ord('A'): KeyActions.DEC_FAST_RED,
     ord('S'): KeyActions.DEC_FAST_GREEN,
     ord('D'): KeyActions.DEC_FAST_BLUE,
-    ord('t'): KeyActions.TRANSPARENT
+    ord('t'): KeyActions.TRANSPARENT,
+    t.KEY_LEFT: KeyActions.MOVE_LEFT,
+    t.KEY_RIGHT: KeyActions.MOVE_RIGHT,
+    t.KEY_UP: KeyActions.MOVE_UP,
+    t.KEY_DOWN: KeyActions.MOVE_DOWN,
+    ord('p'): KeyActions.PUT_COLOR,
+    ord('P'): KeyActions.PICK_COLOR,
+    ord('X'): KeyActions.CLEAR
 }
 
 KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS = {
@@ -374,7 +381,14 @@ KEY_ACTIONS_COLOR_RGB_DESCRIPTIONS = {
     KeyActions.DEC_FAST_RED: f"Decrease Red {FAST_COLOR_VALUE}",
     KeyActions.DEC_FAST_GREEN: f"Decrease Green {FAST_COLOR_VALUE}",
     KeyActions.DEC_FAST_BLUE: f"Decrease Blue {FAST_COLOR_VALUE}",
-    KeyActions.TRANSPARENT: "Select transparent color if applicable"
+    KeyActions.TRANSPARENT: "Select transparent color if applicable",
+    KeyActions.MOVE_LEFT: "Move palette selection left",
+    KeyActions.MOVE_RIGHT: "Move palette selection right",
+    KeyActions.MOVE_UP: "Move palette selection up",
+    KeyActions.MOVE_DOWN: "Move palette selection down",
+    KeyActions.PUT_COLOR: "Copy current color to palette",
+    KeyActions.PICK_COLOR: "Copy selected palette color to current",
+    KeyActions.CLEAR: "Delete selected palette color"
 }
 
 KEY_ACTIONS_COLOR = {
@@ -632,6 +646,11 @@ TILES = ("  ", "𜵊🮂", "▌ ", "𜷀▂", "🮂𜶘", " ▐", "▂𜷕", "�
          "██", "𜶖▆", "▐█", "𜴡🮅", "▆𜵈", "█▌", "🮅𜴍", "▆▆", "🮅🮅", "𜷥█", "𜶫█", "█𜷤", "█𜵰", "𜴳𜴳", "▐▌", "🯧𜴳", "𜴳🯦", "𜶖𜵈", "𜴡𜴍", "🯧🯦",
          "𜷂𜷖", "𜺠𜷓", "𜵲𜷖", "𜺫𜴢", "𜶿𜺣", "𜷂𜴶", "𜴏𜺨", "𜶿𜷓", "𜴏𜴢", "𜷁𜷖", "𜶇𜷖", "𜷂𜷔", "𜷂𜵜", "🯦🯧", "𜵲𜴶", " 🯧", "🯦 ", "𜺠𜺣", "𜺫𜺨", "  ")
 
+def get_visible_inverse_color(r : int, g : int, b : int):
+    return (max(0, 255 - r - 64),
+            max(0, 255 - g - 64),
+            max(0, 255 - b - 64))
+ 
 def display_zoomed_matrix(term : Term,
                           x : int, y : int, pad : int,
                           dx : int, dy : int,
@@ -716,9 +735,7 @@ def display_zoomed_matrix(term : Term,
                                     tile += TILE_INVERT
                                 else:
                                     term.send_bg(color_r, color_g, color_b)
-                                    term.send_fg(max(0, 255 - color_r - 64),
-                                                 max(0, 255 - color_g - 64),
-                                                 max(0, 255 - color_b - 64))
+                                    term.send_fg(get_visible_inverse_color(color_r, color_g, color_b))
                             else:
                                 color_r = colordata_bg_r[cw * ciy + cix]
                                 color_g = colordata_bg_g[cw * ciy + cix]
@@ -1392,10 +1409,28 @@ def prompt_yn(term : Term,
 
     return False
 
+def fit_box(count : int, width : int, height : int):
+    side : int = round(math.ceil(math.sqrt(count)))
+    new_width : int = side
+    new_height : int = side
+    if new_height > height:
+        new_width = count // height
+        new_height = height
+    if new_width > width:
+        new_width = width
+
+    return new_width, new_height
+
 def select_color_rgb(term : Term,
                      r : int, g : int, b : int,
-                     allow_transparent : bool):
+                     allow_transparent : bool,
+                     palette : list = []):
     global interrupted
+
+    c : int = 0
+    width : int
+    height : int
+    width, height = fit_box(len(palette), term.t.width, term.t.height - 2)
 
     orig_r = r
     orig_g = g
@@ -1419,8 +1454,22 @@ def select_color_rgb(term : Term,
         term.send_pos(6, 1)
         term.send_fg(r, g, b)
         print(BLOCK, end='')
-        sys.stdout.flush()
 
+        if len(palette) > 0:
+            term.send_fg(DEFAULT_BG)
+            for num, color in enumerate(palette):
+                term.send_pos(num % width * 2, (num // width) + 2)
+                term.send_bg(palette[num][0], palette[num][1], palette[num][2])
+                print("  ", end='')
+
+            x : int = c % width
+            y : int = c // width
+            term.send_pos(x * 2, y + 2)
+            term.send_fg(get_visible_inverse_color(palette[c][0], palette[c][1], palette[c][2]))
+            term.send_bg(palette[c])
+            print(CURSOR, end='')
+        sys.stdout.flush()
+ 
         _, key = inkey_numeric(t)
         if interrupted:
             # abort selection without change
@@ -1480,6 +1529,29 @@ def select_color_rgb(term : Term,
                     g = -1
                     b = -1
                     break
+            case KeyActions.MOVE_LEFT:
+                c = max(0, c - 1)
+            case KeyActions.MOVE_RIGHT:
+                c = min(len(palette) - 1, c + 1)
+            case KeyActions.MOVE_UP:
+                c = max(0, c - width)
+            case KeyActions.MOVE_DOWN:
+                c = min(len(palette) - 1, c + width)
+            case KeyActions.PUT_COLOR:
+                palette.append((r, g, b))
+                width, height = fit_box(len(palette), term.t.width, term.t.height - 2)
+                term.clear()
+            case KeyActions.PICK_COLOR:
+                if len(palette) > 0:
+                    r = palette[c][0]
+                    g = palette[c][1]
+                    b = palette[c][2]
+            case KeyActions.CLEAR:
+                if len(palette) > 0:
+                    palette.pop(c)
+                    c = min(len(palette) - 1, c)
+                    width, height = fit_box(len(palette), term.t.width, term.t.height - 2)
+                    term.clear()
 
     term.clear()
     return r, g, b
@@ -1489,13 +1561,14 @@ def select_color(term : Term,
                  allow_transparent : bool):
     global interrupted
 
-    x = 0
-    y = 0
-    width = 4
-    height = 4
+    x : int = 0
+    y : int = 0
+    width : int = 0
+    height : int = 0
     if color_mode == ColorMode.C256:
-        width = 16
-        height = 16
+        width, height = fit_box(256, term.t.width, term.t.height)
+    else: # C16
+        width, height = fit_box(16, term.t.width, term.t.height)
     if c >= 0:
         x = c % width
         y = c // width
@@ -3061,6 +3134,7 @@ def main():
     line_x : int = -1
     line_y : int = -1
     set_line : bool = False
+    palette : list = []
 
     last_filename : str = ""
 
@@ -3631,7 +3705,7 @@ def main():
                                 print_status(term, "Changed to DIRECT color mode.")
                         case KeyActions.SELECT_FG_COLOR:
                             if color_mode == ColorMode.DIRECT:
-                                fg_r, fg_g, fg_b = select_color_rgb(term, fg_r, fg_g, fg_b, False)
+                                fg_r, fg_g, fg_b = select_color_rgb(term, fg_r, fg_g, fg_b, False, palette)
                                 print_status(term, f"Foreground color RGB {fg_r}, {fg_g}, {fg_b} selected.")
                             else:
                                 fg_r = select_color(term, fg_r, color_mode, False)
@@ -3640,7 +3714,7 @@ def main():
                             refresh_matrix = (0, 0, canvas_width, canvas_height)
                         case KeyActions.SELECT_BG_COLOR:
                             if color_mode == ColorMode.DIRECT:
-                                bg_r, bg_g, bg_b = select_color_rgb(term, bg_r, bg_g, bg_b, True)
+                                bg_r, bg_g, bg_b = select_color_rgb(term, bg_r, bg_g, bg_b, True, palette)
                                 if bg_r < 0:
                                     print_status(term, f"Transparent background selected.")
                                 else:

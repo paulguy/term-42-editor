@@ -93,6 +93,13 @@ Shift+A: Decrease Red 10
 Shift+S: Decrease Green 10
 Shift+D: Decrease Blue 10
 T: Select transparent color if applicable
+LEFT: Move palette selection left
+RIGHT: Move palette selection right
+UP: Move palette selection up
+DOWN: Move palette selection down
+P: Copy current color to palette
+Shift+P: Copy selected palette color to current
+Shift+X: Delete selected palette color
 
 Palette Color Selection
 -----------------------
@@ -119,13 +126,19 @@ L: Drop line start at cursor
 
 Usage Overview
 --------------
-This application allows for drawing graphics within a terminal utilizing the octant (2x4) characters available to the terminal, with
-colors applied.  Because of the limitations of attributes being a foreground and background color per character, each 2x4 cell can
-only have 2 colors so one needs to be strategic in drawing their graphics to avoid attribute clash or styling things in a way that
+This application allows for drawing graphics within a terminal utilizing the
+octant (2x4) characters available to the terminal, with colors applied.  Because
+of the limitations of attributes being a foreground and background color per
+character, each 2x4 cell can only have 2 colors so one needs to be strategic in
+drawing their graphics to avoid attribute clash or styling things in a way that
 works well with the attribute clash or masks it.
-In using it, operations are done on either a per-tile or per-pixel basis.  Generally, drawing operations are per pixel, but
-operations involving colors happen on whole tile boundaries only.  Often times, pixel operations won't do anything to tile colors
-and tile operations won't do anything to pixel data so they need to be logically thought of as 2 separate layers that affect each
-other and operations need to be done separately.  For example, you can draw out outlines of where different colors are to be, using
-the preview grid for help, then coloring it, maybe adjusting different shapes to fit better or just going with it and letting there
-be a bit of colors bleeding.
+In using it, operations are done on either a per-tile or per-pixel basis.
+Generally, drawing operations are per pixel, but operations involving colors
+happen on whole tile boundaries only.  Often times, pixel operations won't do
+anything to tile colors and tile operations won't do anything to pixel data so
+they need to be logically thought of as 2 separate layers that affect each other
+and operations need to be done separately.  For example, you can draw out
+outlines of where different colors are to be, using the preview grid for help,
+then coloring it, maybe adjusting different shapes to fit better or just going
+with it and letting there be a bit of colors bleeding.
+
