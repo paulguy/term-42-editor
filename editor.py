@@ -26,8 +26,6 @@ import blessed
 
 UNDO_LEVELS = 100
 DEFAULT_FILL = False
-DEFAULT_WIDTH = 128
-DEFAULT_HEIGHT = 128
 ZOOMED_X = 4
 ZOOMED_PAD = 4
 PREVIEW_SPACING = 4
@@ -47,8 +45,8 @@ need_cont : bool = False
 interrupted : bool = False
 orig_winch = None
 orig_cont = None
-canvas_width : int = DEFAULT_WIDTH
-canvas_height : int = DEFAULT_HEIGHT
+canvas_width : int
+canvas_height : int
 canvas_fits = True
 
 class ColorMode(Enum):
@@ -3068,6 +3066,9 @@ def main():
 
     term : Term = Term(t)
 
+    # set initial canvas size to the largest that'll fit
+    canvas_width = max((t.width - CANVAS_X) * 2, 2)
+    canvas_height = max((t.height - TOP_BARS) * 4, 4)
     check_term_size(term)
 
     if t.number_of_colors == 256:
